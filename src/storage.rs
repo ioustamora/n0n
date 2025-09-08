@@ -1,8 +1,6 @@
-use crate::model::StorageBackend;
 use crate::utils::{create_dir_if_not_exists, compute_sha256, write_bytes_to_file};
 use anyhow::Result;
 use std::path::{Path, PathBuf};
-use std::fs;
 use crate::chunk;
 use crate::model::ChunkMeta;
 use crate::crypto;
@@ -114,6 +112,50 @@ fn sftp_connect(host: &str, username: &str, password: &str) -> Result<(ssh2::Sft
     Ok((sftp, sess, tcp))
 }
 
+// Flexible SSH auth and host key verification
+pub enum SshAuth<'a> {
+    Password(&'a str),
+    Key { private_key: &'a str, passphrase: Option<&'a str> },
+}
+
+fn sftp_connect_with(host: &str, username: &str, auth: SshAuth, expected_host_fp_sha256_b64: Option<&str>) -> Result<(ssh2::Sftp, Session, TcpStream)> {
+    let tcp = TcpStream::connect(host)?;
+    let mut sess = Session::new().map_err(|e| anyhow!("failed to create ssh session: {:?}", e))?;
+    sess.set_tcp_stream(tcp.try_clone()?);
+    sess.handshake()?;
+
+    // Host key verification (SHA-256 over raw host key bytes, base64-encoded)
+    if let Some(expected_b64) = expected_host_fp_sha256_b64 {
+        if let Some((hostkey, _typ)) = sess.host_key() {
+            use sha2::{Digest, Sha256};
+            let fp = Sha256::digest(hostkey);
+            let got_b64 = base64::engine::general_purpose::STANDARD.encode(&fp);
+            // Allow optional padding differences by trimming '=' on both sides
+            let exp_trim = expected_b64.trim_end_matches('=');
+            let got_trim = got_b64.trim_end_matches('=');
+            if exp_trim != got_trim {
+                return Err(anyhow!("Host key fingerprint mismatch"));
+            }
+        } else {
+            return Err(anyhow!("Unable to obtain SSH host key"));
+        }
+    }
+
+    match auth {
+        SshAuth::Password(pw) => sess.userauth_password(username, pw)?,
+        SshAuth::Key { private_key, passphrase } => {
+            let pk_path = std::path::Path::new(private_key);
+            sess.userauth_pubkey_file(username, None, pk_path, passphrase)?;
+        }
+    }
+
+    if !sess.authenticated() {
+        return Err(anyhow!("SFTP authentication failed"));
+    }
+    let sftp = sess.sftp()?;
+    Ok((sftp, sess, tcp))
+}
+
 fn ensure_remote_dir(sftp: &ssh2::Sftp, path: &str) -> Result<()> {
     // create each component if it doesn't exist
     let mut comp = std::path::PathBuf::new();
@@ -149,8 +191,26 @@ pub fn upload_chunk_sftp(host: &str, username: &str, password: &str, remote_base
     if remote_chunk_exists(&sftp, &remote_chunk_path) {
         // deduplicate
     } else {
-        let mut remote_file = sftp.create(remote_chunk_path_p)?;
-        remote_file.write_all(data)?;
+        // atomic upload: write to temp then rename
+        let tmp_path = format!("{}.tmp", remote_chunk_path);
+        let mut attempts = 0;
+        loop {
+            attempts += 1;
+            let res: Result<()> = (|| {
+                let mut tmpf = sftp.create(std::path::Path::new(&tmp_path))?;
+                tmpf.write_all(data)?;
+                sftp.rename(std::path::Path::new(&tmp_path), remote_chunk_path_p, None)?;
+                Ok(())
+            })();
+            match res {
+                Ok(()) => break,
+                Err(_e) if attempts < 3 => {
+                    std::thread::sleep(std::time::Duration::from_millis(200 * attempts));
+                    continue;
+                }
+                Err(e) => return Err(e),
+            }
+        }
     }
 
     // write nonce and sender files
@@ -159,12 +219,90 @@ pub fn upload_chunk_sftp(host: &str, username: &str, password: &str, remote_base
     let nonce_path_p = std::path::Path::new(&nonce_path);
     let sender_path_p = std::path::Path::new(&sender_path);
     if !remote_chunk_exists(&sftp, &nonce_path) {
-        let mut nf = sftp.create(nonce_path_p)?;
+        let tmp = format!("{}.tmp", nonce_path);
+        let mut nf = sftp.create(std::path::Path::new(&tmp))?;
         nf.write_all(nonce_b64.as_bytes())?;
+        let _ = sftp.rename(std::path::Path::new(&tmp), nonce_path_p, None);
     }
     if !remote_chunk_exists(&sftp, &sender_path) {
-        let mut sf = sftp.create(sender_path_p)?;
+        let tmp = format!("{}.tmp", sender_path);
+        let mut sf = sftp.create(std::path::Path::new(&tmp))?;
         sf.write_all(sender_b64.as_bytes())?;
+        let _ = sftp.rename(std::path::Path::new(&tmp), sender_path_p, None);
+    }
+
+    Ok(())
+}
+
+// Auth-aware variant supporting SSH keys and host key verification
+pub fn upload_chunk_sftp_auth(
+    host: &str,
+    username: &str,
+    password: Option<&str>,
+    private_key: Option<&str>,
+    private_key_pass: Option<&str>,
+    expected_host_fp_sha256_b64: Option<&str>,
+    remote_base: &str,
+    recipient: &str,
+    sha: &str,
+    data: &[u8],
+    nonce_b64: &str,
+    sender_b64: &str,
+) -> Result<()> {
+    let auth = match (private_key, password) {
+        (Some(pk), _) => SshAuth::Key { private_key: pk, passphrase: private_key_pass },
+        (None, Some(pw)) => SshAuth::Password(pw),
+        _ => return Err(anyhow!("No SSH auth provided")),
+    };
+    let (sftp, _sess, _tcp) = sftp_connect_with(host, username, auth, expected_host_fp_sha256_b64)?;
+
+    // ensure base/recipient/chunks exists
+    let chunks_dir = format!("{}/{}/chunks", remote_base.trim_end_matches('/'), recipient);
+    ensure_remote_dir(&sftp, &chunks_dir)?;
+
+    let remote_chunk_path = format!("{}/{}", chunks_dir, sha);
+    let remote_chunk_path_p = std::path::Path::new(&remote_chunk_path);
+    if remote_chunk_exists(&sftp, &remote_chunk_path) {
+        // deduplicate
+    } else {
+        // atomic upload: write to temp then rename
+        let tmp_path = format!("{}.tmp", remote_chunk_path);
+        let mut attempts = 0;
+        loop {
+            attempts += 1;
+            let res: Result<()> = (|| {
+                let mut tmpf = sftp.create(std::path::Path::new(&tmp_path))?;
+                tmpf.write_all(data)?;
+                sftp.rename(std::path::Path::new(&tmp_path), remote_chunk_path_p, None)?;
+                Ok(())
+            })();
+            match res {
+                Ok(()) => break,
+                Err(_e) if attempts < 3 => {
+                    std::thread::sleep(std::time::Duration::from_millis(200 * attempts));
+                    continue;
+                }
+                Err(e) => return Err(e),
+            }
+        }
+    }
+
+    // write nonce and sender files
+    let nonce_path = format!("{}.nonce", remote_chunk_path);
+    let sender_path = format!("{}.sender", remote_chunk_path);
+    let nonce_path_p = std::path::Path::new(&nonce_path);
+    let sender_path_p = std::path::Path::new(&sender_path);
+    if !remote_chunk_exists(&sftp, &nonce_path) {
+        let tmp = format!("{}.tmp", nonce_path);
+        let mut nf = sftp.create(std::path::Path::new(&tmp))?;
+        nf.write_all(nonce_b64.as_bytes())?;
+        let _ = sftp.rename(std::path::Path::new(&tmp), nonce_path_p, None);
+    }
+    if !remote_chunk_exists(&sftp, &sender_path) {
+        let tmp = format!("{}.tmp", sender_path);
+        let mut sf = sftp.create(std::path::Path::new(&tmp))?;
+        sf.write_all(sender_b64.as_bytes())?;
+        let _ = sftp.rename(std::path::Path::new(&tmp), sender_path_p, None);
     }
 
     Ok(())
@@ -176,6 +314,356 @@ pub fn download_remote_file(host: &str, username: &str, password: &str, remote_p
     let mut buf = Vec::new();
     remote.read_to_end(&mut buf)?;
     Ok(buf)
+}
+
+pub fn download_remote_file_auth(host: &str, username: &str, password: Option<&str>, private_key: Option<&str>, private_key_pass: Option<&str>, expected_host_fp_sha256_b64: Option<&str>, remote_path: &str) -> Result<Vec<u8>> {
+    let auth = match (private_key, password) {
+        (Some(pk), _) => SshAuth::Key { private_key: pk, passphrase: private_key_pass },
+        (None, Some(pw)) => SshAuth::Password(pw),
+        _ => return Err(anyhow!("No SSH auth provided")),
+    };
+    let (sftp, _sess, _tcp) = sftp_connect_with(host, username, auth, expected_host_fp_sha256_b64)?;
+    let mut remote = sftp.open(std::path::Path::new(remote_path))?;
+    let mut buf = Vec::new();
+    remote.read_to_end(&mut buf)?;
+    Ok(buf)
+}
+
+// Encrypt a file and upload its chunks to SFTP mailbox
+pub fn process_file_encrypt_to_sftp(
+    file_path: &Path,
+    root_folder: &Path,
+    recipient_pk_b64: &str,
+    recipient_folder_id: &str,
+    sender_sk_b64: Option<&str>,
+    host: &str,
+    username: &str,
+    password: &str,
+    remote_base: &str,
+) -> Result<()> {
+    // determine relative path
+    let rel = file_path.strip_prefix(root_folder).unwrap_or(file_path);
+    let rel_str = rel.to_string_lossy();
+
+    // split with default 10MB chunks for now
+    let chunk_size = 10 * 1024 * 1024;
+    let mut metas = chunk::split_file_into_chunks(file_path, chunk_size, &rel_str)?;
+
+    // parse recipient public key
+    let recipient_pk_bytes = general_purpose::STANDARD.decode(recipient_pk_b64)?;
+    let recipient_pk = crypto::PublicKey::from_slice(&recipient_pk_bytes)
+        .ok_or_else(|| anyhow!("Invalid recipient public key"))?;
+
+    // sender key or ephemeral
+    let (sender_pk, sender_sk) = if let Some(sk_str) = sender_sk_b64 {
+        let sk_bytes = crate::utils::parse_key_hex_or_b64(sk_str)?;
+        let sender_sk = crypto::SecretKey::from_slice(&sk_bytes)
+            .ok_or_else(|| anyhow!("Invalid sender secret key"))?;
+        let sender_pk = crypto::PublicKey::from_slice(&sender_sk.0)
+            .ok_or_else(|| anyhow!("Failed to derive sender public key"))?;
+        (sender_pk, sender_sk)
+    } else {
+        crypto::generate_keypair()
+    };
+
+    for meta in metas.iter_mut() {
+        // set random nonce
+        let mut nonce_bytes = vec![0u8; crypto::NONCEBYTES];
+        rand::thread_rng().fill_bytes(&mut nonce_bytes);
+        meta.nonce = general_purpose::STANDARD.encode(&nonce_bytes);
+
+        // serialize and encrypt
+        let json = serde_json::to_vec(&meta)?;
+        let encrypted = crypto::encrypt_with_nonce(&json, &nonce_bytes, &recipient_pk, &sender_sk)?;
+
+        // compute sha filename
+        let sha = compute_sha256(&encrypted);
+
+        // upload
+        let sender_b64 = general_purpose::STANDARD.encode(&sender_pk.0);
+        let nonce_b64 = general_purpose::STANDARD.encode(&nonce_bytes);
+        upload_chunk_sftp(
+            host,
+            username,
+            password,
+            remote_base,
+            recipient_folder_id,
+            &sha,
+            &encrypted,
+            &nonce_b64,
+            &sender_b64,
+        )?;
+    }
+
+    Ok(())
+}
+
+pub fn process_file_encrypt_to_sftp_auth(
+    file_path: &Path,
+    root_folder: &Path,
+    recipient_pk_b64: &str,
+    recipient_folder_id: &str,
+    sender_sk_b64: Option<&str>,
+    host: &str,
+    username: &str,
+    password: Option<&str>,
+    private_key: Option<&str>,
+    private_key_pass: Option<&str>,
+    expected_host_fp_sha256_b64: Option<&str>,
+    remote_base: &str,
+) -> Result<()> {
+    // determine relative path
+    let rel = file_path.strip_prefix(root_folder).unwrap_or(file_path);
+    let rel_str = rel.to_string_lossy();
+
+    let chunk_size = 10 * 1024 * 1024;
+    let mut metas = chunk::split_file_into_chunks(file_path, chunk_size, &rel_str)?;
+
+    let recipient_pk_bytes = general_purpose::STANDARD.decode(recipient_pk_b64)?;
+    let recipient_pk = crypto::PublicKey::from_slice(&recipient_pk_bytes)
+        .ok_or_else(|| anyhow!("Invalid recipient public key"))?;
+
+    let (sender_pk, sender_sk) = if let Some(sk_str) = sender_sk_b64 {
+        let sk_bytes = crate::utils::parse_key_hex_or_b64(sk_str)?;
+        let sender_sk = crypto::SecretKey::from_slice(&sk_bytes)
+            .ok_or_else(|| anyhow!("Invalid sender secret key"))?;
+        let sender_pk = crypto::PublicKey::from_slice(&sender_sk.0)
+            .ok_or_else(|| anyhow!("Failed to derive sender public key"))?;
+        (sender_pk, sender_sk)
+    } else {
+        crypto::generate_keypair()
+    };
+
+    for meta in metas.iter_mut() {
+        let mut nonce_bytes = vec![0u8; crypto::NONCEBYTES];
+        rand::thread_rng().fill_bytes(&mut nonce_bytes);
+        meta.nonce = general_purpose::STANDARD.encode(&nonce_bytes);
+
+        let json = serde_json::to_vec(&meta)?;
+        let encrypted = crypto::encrypt_with_nonce(&json, &nonce_bytes, &recipient_pk, &sender_sk)?;
+
+        let sha = compute_sha256(&encrypted);
+        let sender_b64 = general_purpose::STANDARD.encode(&sender_pk.0);
+        let nonce_b64 = general_purpose::STANDARD.encode(&nonce_bytes);
+        upload_chunk_sftp_auth(
+            host,
+            username,
+            password,
+            private_key,
+            private_key_pass,
+            expected_host_fp_sha256_b64,
+            remote_base,
+            recipient_folder_id,
+            &sha,
+            &encrypted,
+            &nonce_b64,
+            &sender_b64,
+        )?;
+    }
+
+    Ok(())
+}
+
+// Assemble from SFTP mailbox with logs
+pub fn assemble_from_sftp_with_logs(
+    host: &str,
+    username: &str,
+    password: &str,
+    remote_base: &str,
+    recipient_id: &str,
+    recipient_sk_b64: &str,
+    output_root: &Path,
+    logs: Arc<Mutex<Vec<String>>>
+) -> Result<()> {
+    // connect and open chunks dir
+    let (sftp, _sess, _tcp) = sftp_connect(host, username, password)?;
+    let chunks_dir = format!("{}/{}/chunks", remote_base.trim_end_matches('/'), recipient_id);
+
+    // parse recipient secret key
+    let sk_bytes = general_purpose::STANDARD.decode(recipient_sk_b64)?;
+    let recipient_sk = crypto::SecretKey::from_slice(&sk_bytes)
+        .ok_or_else(|| anyhow!("Invalid recipient secret key"))?;
+
+    // list remote directory
+    let entries = sftp.readdir(std::path::Path::new(&chunks_dir))?;
+    let mut files_map: HashMap<String, Vec<ChunkMeta>> = HashMap::new();
+    for (p, _st) in entries.into_iter() {
+        let name = match p.file_name().and_then(|s| s.to_str()) {
+            Some(s) => s.to_string(),
+            None => continue,
+        };
+        if name.is_empty() {
+            continue;
+        }
+        if name.ends_with(".nonce") || name.ends_with(".sender") {
+            continue;
+        }
+
+        if let Ok(mut l) = logs.lock() {
+            l.push(format!("Downloading {}", name));
+        }
+        let remote_path = format!("{}/{}", chunks_dir, name);
+        let encrypted = {
+            let mut f = sftp.open(std::path::Path::new(&remote_path))?;
+            let mut buf = Vec::new();
+            f.read_to_end(&mut buf)?;
+            buf
+        };
+
+        let nonce_b64 = {
+            let np = format!("{}.nonce", remote_path);
+            let mut f = sftp.open(std::path::Path::new(&np))?;
+            let mut buf = Vec::new();
+            f.read_to_end(&mut buf)?;
+            String::from_utf8_lossy(&buf).to_string()
+        };
+
+        let sender_b64 = {
+            let sp = format!("{}.sender", remote_path);
+            let mut f = sftp.open(std::path::Path::new(&sp))?;
+            let mut buf = Vec::new();
+            f.read_to_end(&mut buf)?;
+            String::from_utf8_lossy(&buf).to_string()
+        };
+
+        let sender_bytes = general_purpose::STANDARD.decode(sender_b64.trim())?;
+        let sender_pk = crypto::PublicKey::from_slice(&sender_bytes)
+            .ok_or_else(|| anyhow!("Invalid sender public key"))?;
+
+        if let Ok(mut l) = logs.lock() {
+            l.push(format!("Decrypting {}", name));
+        }
+        let json = crypto::decrypt_chunk(&encrypted, nonce_b64.trim(), &sender_pk, &recipient_sk)?;
+        let meta: ChunkMeta = serde_json::from_slice(&json)?;
+        files_map.entry(meta.file_sha256.clone()).or_default().push(meta);
+    }
+
+    for (_sha, mut metas) in files_map {
+        metas.sort_by_key(|m| m.chunk_index);
+        if let Ok(mut l) = logs.lock() {
+            l.push(format!(
+                "Assembling file {} ({} chunks)",
+                metas
+                    .first()
+                    .map(|m| m.file_name.clone())
+                    .unwrap_or_default(),
+                metas.len()
+            ));
+        }
+        let assembled = chunk::assemble_file_from_chunks(&metas)?;
+        chunk::verify_file_integrity(&metas, &assembled)?;
+
+        if let Some(first) = metas.first() {
+            let out_path = output_root.join(&first.file_name);
+            if let Some(parent) = out_path.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            write_bytes_to_file(&out_path, &assembled)?;
+            if let Ok(mut l) = logs.lock() {
+                l.push(format!("Wrote {}", out_path.display()));
+            }
+        }
+    }
+
+    if let Ok(mut l) = logs.lock() {
+        l.push("Assembly finished".to_string());
+    }
+    Ok(())
+}
+
+pub fn assemble_from_sftp_with_logs_auth(
+    host: &str,
+    username: &str,
+    password: Option<&str>,
+    private_key: Option<&str>,
+    private_key_pass: Option<&str>,
+    expected_host_fp_sha256_b64: Option<&str>,
+    remote_base: &str,
+    recipient_id: &str,
+    recipient_sk_b64: &str,
+    output_root: &Path,
+    logs: Arc<Mutex<Vec<String>>>
+) -> Result<()> {
+    let auth = match (private_key, password) {
+        (Some(pk), _) => SshAuth::Key { private_key: pk, passphrase: private_key_pass },
+        (None, Some(pw)) => SshAuth::Password(pw),
+        _ => return Err(anyhow!("No SSH auth provided")),
+    };
+    let (sftp, _sess, _tcp) = sftp_connect_with(host, username, auth, expected_host_fp_sha256_b64)?;
+    let chunks_dir = format!("{}/{}/chunks", remote_base.trim_end_matches('/'), recipient_id);
+
+    // parse recipient secret key
+    let sk_bytes = general_purpose::STANDARD.decode(recipient_sk_b64)?;
+    let recipient_sk = crypto::SecretKey::from_slice(&sk_bytes)
+        .ok_or_else(|| anyhow!("Invalid recipient secret key"))?;
+
+    let entries = sftp.readdir(std::path::Path::new(&chunks_dir))?;
+    let mut files_map: HashMap<String, Vec<ChunkMeta>> = HashMap::new();
+    for (p, _st) in entries.into_iter() {
+        let name = match p.file_name().and_then(|s| s.to_str()) {
+            Some(s) => s.to_string(),
+            None => continue,
+        };
+        if name.is_empty() { continue; }
+        if name.ends_with(".nonce") || name.ends_with(".sender") { continue; }
+
+        if let Ok(mut l) = logs.lock() { l.push(format!("Downloading {}", name)); }
+        let remote_path = format!("{}/{}", chunks_dir, name);
+        let encrypted = {
+            let mut f = sftp.open(std::path::Path::new(&remote_path))?;
+            let mut buf = Vec::new();
+            f.read_to_end(&mut buf)?;
+            buf
+        };
+
+        let nonce_b64 = {
+            let np = format!("{}.nonce", remote_path);
+            let mut f = sftp.open(std::path::Path::new(&np))?;
+            let mut buf = Vec::new();
+            f.read_to_end(&mut buf)?;
+            String::from_utf8_lossy(&buf).to_string()
+        };
+
+        let sender_b64 = {
+            let sp = format!("{}.sender", remote_path);
+            let mut f = sftp.open(std::path::Path::new(&sp))?;
+            let mut buf = Vec::new();
+            f.read_to_end(&mut buf)?;
+            String::from_utf8_lossy(&buf).to_string()
+        };
+
+        let sender_bytes = general_purpose::STANDARD.decode(sender_b64.trim())?;
+        let sender_pk = crypto::PublicKey::from_slice(&sender_bytes)
+            .ok_or_else(|| anyhow!("Invalid sender public key"))?;
+
+        if let Ok(mut l) = logs.lock() { l.push(format!("Decrypting {}", name)); }
+        let json = crypto::decrypt_chunk(&encrypted, nonce_b64.trim(), &sender_pk, &recipient_sk)?;
+        let meta: ChunkMeta = serde_json::from_slice(&json)?;
+        files_map.entry(meta.file_sha256.clone()).or_default().push(meta);
+    }
+
+    for (_sha, mut metas) in files_map {
+        metas.sort_by_key(|m| m.chunk_index);
+        if let Ok(mut l) = logs.lock() {
+            l.push(format!(
+                "Assembling file {} ({} chunks)",
+                metas.first().map(|m| m.file_name.clone()).unwrap_or_default(),
+                metas.len()
+            ));
+        }
+        let assembled = chunk::assemble_file_from_chunks(&metas)?;
+        chunk::verify_file_integrity(&metas, &assembled)?;
+
+        if let Some(first) = metas.first() {
+            let out_path = output_root.join(&first.file_name);
+            if let Some(parent) = out_path.parent() { std::fs::create_dir_all(parent)?; }
+            write_bytes_to_file(&out_path, &assembled)?;
+            if let Ok(mut l) = logs.lock() { l.push(format!("Wrote {}", out_path.display())); }
+        }
+    }
+
+    if let Ok(mut l) = logs.lock() { l.push("Assembly finished".to_string()); }
+    Ok(())
 }
 
 pub fn assemble_from_mailbox(mailbox: &Path, recipient_sk_b64: &str, output_root: &Path) -> Result<()> {

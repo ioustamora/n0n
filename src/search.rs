@@ -1,4 +1,3 @@
-use crate::model::StorageBackend;
 use anyhow::Result;
 use std::path::Path;
 
