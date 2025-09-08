@@ -12,6 +12,9 @@ use rand::RngCore;
 use anyhow::anyhow;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+use ssh2::Session;
+use std::net::TcpStream;
+use std::io::{Read, Write};
 
 pub fn process_file_encrypt(file_path: &Path, root_folder: &Path, recipient_pk_b64: &str, sender_sk_b64: Option<&str>, mailbox_base: &Path) -> Result<()> {
     // determine relative path
@@ -92,6 +95,87 @@ pub fn save_chunk_local(mailbox: &Path, encrypted: &[u8]) -> Result<String> {
 pub async fn ensure_mailbox_sftp(_host: &str, _user: &str, _password: &str, _path: &str, _recipient: &str) -> Result<()> {
     // TODO: implement SFTP mailbox creation
     Ok(())
+}
+
+// SFTP helper primitives (blocking). These provide basic connect/upload/download
+// functionality used by a remote mailbox backend. They intentionally keep the
+// Session and TcpStream alive while the SFTP handle is in use.
+fn sftp_connect(host: &str, username: &str, password: &str) -> Result<(ssh2::Sftp, Session, TcpStream)> {
+    // host may include port (host:22) or just host
+    let tcp = TcpStream::connect(host)?;
+    let mut sess = Session::new().map_err(|e| anyhow!("failed to create ssh session: {:?}", e))?;
+    sess.set_tcp_stream(tcp.try_clone()?);
+    sess.handshake()?;
+    sess.userauth_password(username, password)?;
+    if !sess.authenticated() {
+        return Err(anyhow!("SFTP authentication failed"));
+    }
+    let sftp = sess.sftp()?;
+    Ok((sftp, sess, tcp))
+}
+
+fn ensure_remote_dir(sftp: &ssh2::Sftp, path: &str) -> Result<()> {
+    // create each component if it doesn't exist
+    let mut comp = std::path::PathBuf::new();
+    for part in path.split('/') {
+        if part.is_empty() { continue; }
+        comp.push(part);
+        let ppath = std::path::Path::new(&comp);
+        match sftp.stat(ppath) {
+            Ok(_) => continue,
+            Err(_) => {
+                // try to create
+                let _ = sftp.mkdir(ppath, 0o755);
+            }
+        }
+    }
+    Ok(())
+}
+
+fn remote_chunk_exists(sftp: &ssh2::Sftp, remote_path: &str) -> bool {
+    let p = std::path::Path::new(remote_path);
+    sftp.stat(p).is_ok()
+}
+
+pub fn upload_chunk_sftp(host: &str, username: &str, password: &str, remote_base: &str, recipient: &str, sha: &str, data: &[u8], nonce_b64: &str, sender_b64: &str) -> Result<()> {
+    // connect
+    let (sftp, _sess, _tcp) = sftp_connect(host, username, password)?;
+    // ensure base/recipient/chunks exists
+    let chunks_dir = format!("{}/{}/chunks", remote_base.trim_end_matches('/'), recipient);
+    ensure_remote_dir(&sftp, &chunks_dir)?;
+
+    let remote_chunk_path = format!("{}/{}", chunks_dir, sha);
+    let remote_chunk_path_p = std::path::Path::new(&remote_chunk_path);
+    if remote_chunk_exists(&sftp, &remote_chunk_path) {
+        // deduplicate
+    } else {
+        let mut remote_file = sftp.create(remote_chunk_path_p)?;
+        remote_file.write_all(data)?;
+    }
+
+    // write nonce and sender files
+    let nonce_path = format!("{}.nonce", remote_chunk_path);
+    let sender_path = format!("{}.sender", remote_chunk_path);
+    let nonce_path_p = std::path::Path::new(&nonce_path);
+    let sender_path_p = std::path::Path::new(&sender_path);
+    if !remote_chunk_exists(&sftp, &nonce_path) {
+        let mut nf = sftp.create(nonce_path_p)?;
+        nf.write_all(nonce_b64.as_bytes())?;
+    }
+    if !remote_chunk_exists(&sftp, &sender_path) {
+        let mut sf = sftp.create(sender_path_p)?;
+        sf.write_all(sender_b64.as_bytes())?;
+    }
+
+    Ok(())
+}
+
+pub fn download_remote_file(host: &str, username: &str, password: &str, remote_path: &str) -> Result<Vec<u8>> {
+    let (sftp, _sess, _tcp) = sftp_connect(host, username, password)?;
+    let mut remote = sftp.open(remote_path)?;
+    let mut buf = Vec::new();
+    remote.read_to_end(&mut buf)?;
+    Ok(buf)
 }
 
 pub fn assemble_from_mailbox(mailbox: &Path, recipient_sk_b64: &str, output_root: &Path) -> Result<()> {
