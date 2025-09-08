@@ -18,13 +18,17 @@ fn test_encrypt_and_assemble_roundtrip() {
     let recipient_pk_b64 = general_purpose::STANDARD.encode(&recipient_pk.0);
     let recipient_sk_b64 = general_purpose::STANDARD.encode(&recipient_sk.0);
 
-    let mailbox = dir.path().join("mailbox");
+    let mailbox_root = dir.path().join("mailbox");
+    let mailbox = mailbox_root.join(&recipient_pk_b64);
     std::fs::create_dir_all(&mailbox).unwrap();
 
-    // encrypt
-    storage::process_file_encrypt(&file, &src, &recipient_pk_b64, None, &mailbox).unwrap();
+    // encrypt into recipient mailbox root (process will create recipient folder)
+    let mailbox_root = dir.path().join("mailbox");
+    std::fs::create_dir_all(&mailbox_root).unwrap();
+    storage::process_file_encrypt(&file, &src, &recipient_pk_b64, None, &mailbox_root).unwrap();
 
-    // assemble
+    // assemble from recipient mailbox
+    let mailbox = mailbox_root.join(&recipient_pk_b64);
     let out = dir.path().join("out");
     std::fs::create_dir_all(&out).unwrap();
     storage::assemble_from_mailbox(&mailbox, &recipient_sk_b64, &out).unwrap();
