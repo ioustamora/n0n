@@ -27,3 +27,8 @@ walkdir = "2.3"
 
 [dev-dependencies]
 tempfile = "3.6"
+
+[features]
+default = []
+# Enable SFTP integration tests (requires env vars and a reachable server)
+sftp-tests = []
