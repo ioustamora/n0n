@@ -38,3 +38,12 @@ pub fn create_dir_if_not_exists(path: &Path) -> Result<()> {
 	}
 	Ok(())
 }
+
+pub fn parse_key_hex_or_b64(s: &str) -> Result<Vec<u8>> {
+	// try hex first
+	if let Ok(bytes) = hex::decode(s) {
+		return Ok(bytes);
+	}
+	// else try base64
+	Ok(general_purpose::STANDARD.decode(s)?)
+}
