@@ -12,6 +12,7 @@ pub fn generate_keypair() -> (PublicKey, SecretKey) {
 	box_::gen_keypair()
 }
 
+#[allow(dead_code)]
 pub fn encrypt_chunk(plaintext: &[u8], recipient_pk: &PublicKey, sender_sk: &SecretKey) -> Result<(Vec<u8>, String)> {
 	let nonce = box_::gen_nonce();
 	let ciphertext = box_::seal(plaintext, &nonce, recipient_pk, sender_sk);
@@ -27,6 +28,7 @@ pub fn decrypt_chunk(ciphertext: &[u8], nonce_b64: &str, sender_pk: &PublicKey, 
 	box_::open(ciphertext, &nonce, sender_pk, recipient_sk).map_err(|_| anyhow!("Decryption failed"))
 }
 
+#[allow(dead_code)]
 pub fn precompute_shared(sender_sk: &SecretKey, recipient_pk: &PublicKey) -> PrecomputedKey {
 	box_::precompute(recipient_pk, sender_sk)
 }
