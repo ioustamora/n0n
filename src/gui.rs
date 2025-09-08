@@ -10,6 +10,8 @@ use crate::storage;
 use crate::search;
 use std::path::Path;
 use crate::crypto;
+use std::collections::HashMap;
+use crate::utils;
 
 #[derive(Default)]
 pub struct AppState {
@@ -50,7 +52,9 @@ pub struct AppState {
     // options
     pub skip_hidden: bool,
     pub dry_run: bool,
-    pub file_status: String,
+    pub file_status: Arc<Mutex<String>>,
+    // tuning
+    pub watcher_debounce_ms: u64,
 }
 
 impl AppState {
@@ -123,6 +127,8 @@ impl eframe::App for AppState {
                 ui.selectable_value(&mut self.storage_backend, 1, "SFTP");
                 ui.checkbox(&mut self.skip_hidden, "Skip hidden (.*) files");
                 ui.checkbox(&mut self.dry_run, "Dry run (no write)");
+                ui.label("Watcher debounce (ms):");
+                ui.add(egui::DragValue::new(&mut self.watcher_debounce_ms).clamp_range(100..=10_000));
             });
 
     if self.storage_backend == 1 {
@@ -160,6 +166,8 @@ impl eframe::App for AppState {
                     let sftp_require_host_fp = self.sftp_require_host_fp;
                     let backend = self.storage_backend;
                     let skip_hidden_flag = self.skip_hidden;
+                    let dry_run_enabled = self.dry_run;
+                    let status_arc = self.file_status.clone();
                     let mailbox_id = if self.sftp_mailbox_id.trim().is_empty() { self.recipient_pk.clone() } else { self.sftp_mailbox_id.clone() };
 
                     if backend == 1 && sftp_require_host_fp && sftp_host_fp.trim().is_empty() {
@@ -191,7 +199,19 @@ impl eframe::App for AppState {
                             if let Some(file) = selected_file {
                                 log(&format!("Encrypting file: {:?}", file));
                                 let chunk_bytes = (chunk_mb as usize) * 1024 * 1024;
-                                if backend == 0 {
+                                if dry_run_enabled {
+                                    // Estimate chunks and simulate progress without writing
+                                    let est_chunks = match std::fs::metadata(&file) {
+                                        Ok(m) => {
+                                            let sz = m.len() as usize;
+                                            utils::estimate_chunks(sz, chunk_bytes)
+                                        }
+                                        Err(_) => 1,
+                                    };
+                                    total.store(est_chunks, Ordering::Relaxed);
+                                    if let Ok(mut s) = status_arc.lock() { *s = format!("Dry-run: would process {:?}", file); }
+                                    for _ in 0..est_chunks { done.fetch_add(1, Ordering::Relaxed); }
+                                } else if backend == 0 {
                                     let _ = storage::process_file_encrypt(&file, &file.parent().unwrap_or(&output), &recipient, sender.as_deref(), &output, chunk_bytes, Some((total.clone(), done.clone())), Some(cancel.clone()));
                                 } else {
                                     if !sftp_pk.is_empty() || !sftp_host_fp.is_empty() {
@@ -216,8 +236,7 @@ impl eframe::App for AppState {
                                         if skip_hidden_flag && is_hidden_path(entry.path()) { continue; }
                                         if let Ok(meta) = entry.metadata() {
                                             let sz = meta.len() as usize;
-                                            let chunks = if chunk_bytes == 0 { 1 } else { (sz + chunk_bytes - 1) / chunk_bytes };
-                                            total_chunks += chunks.max(1);
+                                            total_chunks += utils::estimate_chunks(sz, chunk_bytes);
                                         }
                                     }
                                 }
@@ -235,22 +254,19 @@ impl eframe::App for AppState {
                                         let path = entry.path().to_path_buf();
                                         // per-file status
                                         if let Ok(mut l) = logs.lock() { l.push(format!("Processing {:?}", path)); }
+                                        if let Ok(mut s) = status_arc.lock() { *s = format!("Processing {:?}", path); }
                                         // dry-run: skip the actual calls and just increment done by estimated chunks
-                                        if sftp_pk.is_empty() && sftp_host_fp.is_empty() && backend == 0 && /* local path */ false { /* placeholder */ }
-                                        if false {}
-                                        if false {}
-                                        if false {}
-                                        if false {}
-                                        if self_dry_run_enabled() {
+                                        if dry_run_enabled {
                                             // estimate chunks for this file
                                             let est_chunks = match std::fs::metadata(&path) {
                                                 Ok(m) => {
                                                     let sz = m.len() as usize;
-                                                    if chunk_bytes == 0 { 1 } else { (sz + chunk_bytes - 1) / chunk_bytes }.max(1)
+                                                    utils::estimate_chunks(sz, chunk_bytes)
                                                 }
                                                 Err(_) => 1,
                                             };
                                             for _ in 0..est_chunks { done.fetch_add(1, std::sync::atomic::Ordering::Relaxed); }
+                                            if let Ok(mut s) = status_arc.lock() { *s = format!("Dry-run: would process {:?}", path); }
                                             continue;
                                         }
                                         if backend == 0 {
@@ -267,6 +283,7 @@ impl eframe::App for AppState {
                                             }
                                         }
                                         log(&format!("Encrypted {:?}", path));
+                                        if let Ok(mut s) = status_arc.lock() { *s = format!("Encrypted {:?}", path); }
                                         if cancel.load(std::sync::atomic::Ordering::Relaxed) { break; }
                                     }
                                 }
@@ -371,12 +388,15 @@ impl eframe::App for AppState {
                         self.log("Cancel requested");
                     }
                 });
-                if !self.file_status.is_empty() { ui.label(format!("Status: {}", self.file_status)); }
+                if let Ok(s) = self.file_status.lock() {
+                    if !s.is_empty() { ui.label(format!("Status: {}", &*s)); }
+                }
                 // auto-finish when counters complete
                 if total > 0 && done >= total {
                     self.job_running = false;
                     self.job_cancel = None;
                     self.job_pause = None;
+                    if let Ok(mut s) = self.file_status.lock() { s.clear(); }
                 }
             }
             ui.horizontal(|ui| {
@@ -403,9 +423,13 @@ impl eframe::App for AppState {
                             let sftp_pk = self.sftp_private_key.clone();
                             let sftp_pk_pass = self.sftp_private_key_pass.clone();
                             let sftp_host_fp = self.sftp_host_fingerprint_sha256_b64.clone();
+                            let sftp_require_host_fp = self.sftp_require_host_fp;
                             let skip_hidden_flag = self.skip_hidden;
                             let mailbox_id = if self.sftp_mailbox_id.trim().is_empty() { recipient.clone() } else { self.sftp_mailbox_id.clone() };
                             let chunk_mb_watcher = self.chunk_size_mb;
+                            let dry_run_enabled = self.dry_run;
+                            let debounce_ms = self.watcher_debounce_ms;
+                            let status_arc = self.file_status.clone();
                             self.log("Watcher starting...");
                             let handle = std::thread::spawn(move || {
                                 let _ = crypto::init();
@@ -415,13 +439,31 @@ impl eframe::App for AppState {
                                 }).expect("watcher create");
                                 watcher.watch(&folder, RecursiveMode::Recursive).expect("watch start");
 
+                                let mut last_seen: HashMap<PathBuf, std::time::Instant> = HashMap::new();
+                                let debounce = std::time::Duration::from_millis(debounce_ms.max(1));
+
                                 while !stop_clone.load(Ordering::Relaxed) {
                                     match rx.recv_timeout(std::time::Duration::from_millis(500)) {
                                         Ok(ev) => {
                         for p in ev.paths {
                                                 if p.is_file() {
                             if skip_hidden_flag && is_hidden_path(&p) { continue; }
+                                                    // debounce per path
+                                                    let now = std::time::Instant::now();
+                                                    if let Some(last) = last_seen.get(&p) {
+                                                        if now.duration_since(*last) < debounce { continue; }
+                                                    }
+                                                    last_seen.insert(p.clone(), now);
                                                     if let Ok(mut l) = logs.lock() { l.push(format!("Detected change: {:?}", p)); }
+                                                    if backend == 1 && sftp_require_host_fp && sftp_host_fp.trim().is_empty() {
+                                                        if let Ok(mut l) = logs.lock() { l.push("Watcher: host fingerprint required but not provided; skipping.".to_string()); }
+                                                        continue;
+                                                    }
+                                                    if dry_run_enabled {
+                                                        if let Ok(mut l) = logs.lock() { l.push(format!("Watcher dry-run: would process {:?}", p)); }
+                                                        if let Ok(mut s) = status_arc.lock() { *s = format!("Watcher dry-run: {:?}", p); }
+                                                        continue;
+                                                    }
                                                     if backend == 0 {
                                                         let _ = storage::process_file_encrypt(&p, &folder, &recipient, sender.as_deref(), &output, (chunk_mb_watcher as usize) * 1024 * 1024, None, None);
                                                     } else {
@@ -495,7 +537,7 @@ pub fn run_gui() -> Result<()> {
     search_base: String::new(),
         skip_hidden: true,
     dry_run: false,
-    file_status: String::new(),
+    file_status: Default::default(),
         ..Default::default()
     };
     let _ = eframe::run_native("n0n", options, Box::new(|_cc| Box::new(app)));
@@ -513,8 +555,3 @@ fn is_hidden_path(p: &Path) -> bool {
     false
 }
 
-fn self_dry_run_enabled() -> bool {
-    // No direct access to self in the worker thread; this helper can be extended if needed.
-    // For now, return false; the real dry-run is wired by capturing self.dry_run into the closure if desired.
-    false
-}

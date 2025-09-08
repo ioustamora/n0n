@@ -48,3 +48,11 @@ pub fn parse_key_hex_or_b64(s: &str) -> Result<Vec<u8>> {
 	// else try base64
 	Ok(general_purpose::STANDARD.decode(s)?)
 }
+
+/// Estimate number of chunks given file size and chunk size in bytes.
+/// Always returns at least 1.
+pub fn estimate_chunks(file_size_bytes: usize, chunk_bytes: usize) -> usize {
+	if chunk_bytes == 0 { return 1; }
+	let chunks = (file_size_bytes + chunk_bytes - 1) / chunk_bytes;
+	chunks.max(1)
+}
