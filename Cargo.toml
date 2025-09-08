@@ -1,0 +1,28 @@
+[package]
+name = "n0n"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# dryoc replaced with explicit primitives for compatibility
+sodiumoxide = "0.2"
+rand = "0.8"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+base64 = "0.22"
+sha2 = "0.10"
+egui = "0.27"
+eframe = "0.27"
+notify = "6.1"
+rayon = "1.7"
+log = "0.4"
+env_logger = "0.10"
+ssh2 = "0.9"
+tokio = { version = "1.0", features = ["full"] }
+futures = "0.3"
+rfd = "0.14"
+anyhow = "1.0"
+walkdir = "2.3"
+
+[dev-dependencies]
+tempfile = "3.6"

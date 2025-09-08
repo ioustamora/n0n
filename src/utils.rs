@@ -1,0 +1,40 @@
+use sha2::{Digest, Sha256};
+use base64::{Engine as _, engine::general_purpose};
+use std::fs;
+use std::path::Path;
+use anyhow::Result;
+
+pub fn compute_sha256(data: &[u8]) -> String {
+	let mut hasher = Sha256::new();
+	hasher.update(data);
+	format!("{:x}", hasher.finalize())
+}
+
+pub fn encode_base64(data: &[u8]) -> String {
+	general_purpose::STANDARD.encode(data)
+}
+
+pub fn decode_base64(data: &str) -> Result<Vec<u8>> {
+	Ok(general_purpose::STANDARD.decode(data)?)
+}
+
+pub fn get_file_size(path: &Path) -> Result<u64> {
+	let metadata = fs::metadata(path)?;
+	Ok(metadata.len())
+}
+
+pub fn read_file_to_bytes(path: &Path) -> Result<Vec<u8>> {
+	Ok(fs::read(path)?)
+}
+
+pub fn write_bytes_to_file(path: &Path, data: &[u8]) -> Result<()> {
+	fs::write(path, data)?;
+	Ok(())
+}
+
+pub fn create_dir_if_not_exists(path: &Path) -> Result<()> {
+	if !path.exists() {
+		fs::create_dir_all(path)?;
+	}
+	Ok(())
+}
