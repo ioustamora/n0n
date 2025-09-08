@@ -25,7 +25,7 @@ fn test_encrypt_and_assemble_roundtrip() {
     // encrypt into recipient mailbox root (process will create recipient folder)
     let mailbox_root = dir.path().join("mailbox");
     std::fs::create_dir_all(&mailbox_root).unwrap();
-    storage::process_file_encrypt(&file, &src, &recipient_pk_b64, None, &mailbox_root).unwrap();
+    storage::process_file_encrypt(&file, &src, &recipient_pk_b64, None, &mailbox_root, 0, None, None).unwrap();
 
     // assemble from recipient mailbox
     let mailbox = mailbox_root.join(&recipient_pk_b64);

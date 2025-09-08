@@ -10,18 +10,30 @@ use rand::RngCore;
 use anyhow::anyhow;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicUsize, AtomicBool, Ordering};
 use ssh2::Session;
 use std::net::TcpStream;
 use std::io::{Read, Write};
 
-pub fn process_file_encrypt(file_path: &Path, root_folder: &Path, recipient_pk_b64: &str, sender_sk_b64: Option<&str>, mailbox_base: &Path) -> Result<()> {
+pub fn process_file_encrypt(
+    file_path: &Path,
+    root_folder: &Path,
+    recipient_pk_b64: &str,
+    sender_sk_b64: Option<&str>,
+    mailbox_base: &Path,
+    chunk_size_bytes: usize,
+    progress: Option<(Arc<AtomicUsize>, Arc<AtomicUsize>)>,
+    cancel: Option<Arc<AtomicBool>>,
+) -> Result<()> {
     // determine relative path
     let rel = file_path.strip_prefix(root_folder).unwrap_or(file_path);
     let rel_str = rel.to_string_lossy();
 
     // split
-    let chunk_size = 10 * 1024 * 1024; // default 10MB
+    let chunk_size = if chunk_size_bytes == 0 { 10 * 1024 * 1024 } else { chunk_size_bytes };
     let mut metas = chunk::split_file_into_chunks(file_path, chunk_size, &rel_str)?;
+
+    if let Some((total, done)) = &progress { total.store(metas.len() as usize, Ordering::Relaxed); done.store(0, Ordering::Relaxed); }
 
     // parse recipient public key (expect base64 raw bytes)
     let recipient_pk_bytes = general_purpose::STANDARD.decode(recipient_pk_b64)?;
@@ -42,6 +54,7 @@ pub fn process_file_encrypt(file_path: &Path, root_folder: &Path, recipient_pk_b
 
     // process each chunk: create JSON, encrypt, save
     for meta in metas.iter_mut() {
+        if let Some(flag) = &cancel { if flag.load(Ordering::Relaxed) { break; } }
         // set random nonce
     let mut nonce_bytes = vec![0u8; crypto::NONCEBYTES];
         rand::thread_rng().fill_bytes(&mut nonce_bytes);
@@ -64,6 +77,7 @@ pub fn process_file_encrypt(file_path: &Path, root_folder: &Path, recipient_pk_b
     let sender_b64 = general_purpose::STANDARD.encode(&sender_pk.0);
     let sender_path = chunks_dir.join(format!("{}.sender", sha));
     write_bytes_to_file(&sender_path, sender_b64.as_bytes())?;
+        if let Some((_total, done)) = &progress { done.fetch_add(1, Ordering::Relaxed); }
     }
 
     Ok(())
@@ -340,14 +354,19 @@ pub fn process_file_encrypt_to_sftp(
     username: &str,
     password: &str,
     remote_base: &str,
+    chunk_size_bytes: usize,
+    progress: Option<(Arc<AtomicUsize>, Arc<AtomicUsize>)>,
+    cancel: Option<Arc<AtomicBool>>,
 ) -> Result<()> {
     // determine relative path
     let rel = file_path.strip_prefix(root_folder).unwrap_or(file_path);
     let rel_str = rel.to_string_lossy();
 
     // split with default 10MB chunks for now
-    let chunk_size = 10 * 1024 * 1024;
+    let chunk_size = if chunk_size_bytes == 0 { 10 * 1024 * 1024 } else { chunk_size_bytes };
     let mut metas = chunk::split_file_into_chunks(file_path, chunk_size, &rel_str)?;
+
+    if let Some((total, done)) = &progress { total.store(metas.len() as usize, Ordering::Relaxed); done.store(0, Ordering::Relaxed); }
 
     // parse recipient public key
     let recipient_pk_bytes = general_purpose::STANDARD.decode(recipient_pk_b64)?;
@@ -367,6 +386,7 @@ pub fn process_file_encrypt_to_sftp(
     };
 
     for meta in metas.iter_mut() {
+        if let Some(flag) = &cancel { if flag.load(Ordering::Relaxed) { break; } }
         // set random nonce
         let mut nonce_bytes = vec![0u8; crypto::NONCEBYTES];
         rand::thread_rng().fill_bytes(&mut nonce_bytes);
@@ -382,7 +402,7 @@ pub fn process_file_encrypt_to_sftp(
         // upload
         let sender_b64 = general_purpose::STANDARD.encode(&sender_pk.0);
         let nonce_b64 = general_purpose::STANDARD.encode(&nonce_bytes);
-        upload_chunk_sftp(
+    upload_chunk_sftp(
             host,
             username,
             password,
@@ -393,6 +413,8 @@ pub fn process_file_encrypt_to_sftp(
             &nonce_b64,
             &sender_b64,
         )?;
+
+    if let Some((_total, done)) = &progress { done.fetch_add(1, Ordering::Relaxed); }
     }
 
     Ok(())
@@ -411,13 +433,18 @@ pub fn process_file_encrypt_to_sftp_auth(
     private_key_pass: Option<&str>,
     expected_host_fp_sha256_b64: Option<&str>,
     remote_base: &str,
+    chunk_size_bytes: usize,
+    progress: Option<(Arc<AtomicUsize>, Arc<AtomicUsize>)>,
+    cancel: Option<Arc<AtomicBool>>,
 ) -> Result<()> {
     // determine relative path
     let rel = file_path.strip_prefix(root_folder).unwrap_or(file_path);
     let rel_str = rel.to_string_lossy();
 
-    let chunk_size = 10 * 1024 * 1024;
+    let chunk_size = if chunk_size_bytes == 0 { 10 * 1024 * 1024 } else { chunk_size_bytes };
     let mut metas = chunk::split_file_into_chunks(file_path, chunk_size, &rel_str)?;
+
+    if let Some((total, done)) = &progress { total.store(metas.len() as usize, Ordering::Relaxed); done.store(0, Ordering::Relaxed); }
 
     let recipient_pk_bytes = general_purpose::STANDARD.decode(recipient_pk_b64)?;
     let recipient_pk = crypto::PublicKey::from_slice(&recipient_pk_bytes)
@@ -435,6 +462,7 @@ pub fn process_file_encrypt_to_sftp_auth(
     };
 
     for meta in metas.iter_mut() {
+        if let Some(flag) = &cancel { if flag.load(Ordering::Relaxed) { break; } }
         let mut nonce_bytes = vec![0u8; crypto::NONCEBYTES];
         rand::thread_rng().fill_bytes(&mut nonce_bytes);
         meta.nonce = general_purpose::STANDARD.encode(&nonce_bytes);
@@ -445,7 +473,7 @@ pub fn process_file_encrypt_to_sftp_auth(
         let sha = compute_sha256(&encrypted);
         let sender_b64 = general_purpose::STANDARD.encode(&sender_pk.0);
         let nonce_b64 = general_purpose::STANDARD.encode(&nonce_bytes);
-        upload_chunk_sftp_auth(
+    upload_chunk_sftp_auth(
             host,
             username,
             password,
@@ -459,6 +487,8 @@ pub fn process_file_encrypt_to_sftp_auth(
             &nonce_b64,
             &sender_b64,
         )?;
+
+    if let Some((_total, done)) = &progress { done.fetch_add(1, Ordering::Relaxed); }
     }
 
     Ok(())
