@@ -255,6 +255,38 @@ pub fn upload_chunk_sftp(host: &str, username: &str, password: &str, remote_base
     Ok(())
 }
 
+/// Test SFTP connectivity with password auth and basic access to the base directory.
+pub fn test_sftp_connection(host: &str, username: &str, password: &str, remote_base: &str) -> Result<()> {
+    let (sftp, _sess, _tcp) = sftp_connect(host, username, password)?;
+    // Check that base exists and is accessible
+    let base_path = std::path::Path::new(remote_base.trim_end_matches('/'));
+    let _ = sftp.stat(base_path)?;
+    Ok(())
+}
+
+/// Test SFTP connectivity with flexible auth and optional host fingerprint verification.
+pub fn test_sftp_connection_auth(
+    host: &str,
+    username: &str,
+    password: Option<&str>,
+    private_key: Option<&str>,
+    private_key_pass: Option<&str>,
+    expected_host_fp_sha256_b64: Option<&str>,
+    remote_base: &str,
+) -> Result<()> {
+    let auth = if let Some(pk) = private_key {
+        SshAuth::Key { private_key: pk, passphrase: private_key_pass }
+    } else if let Some(pw) = password {
+        SshAuth::Password(pw)
+    } else {
+        return Err(anyhow!("No SFTP auth provided"));
+    };
+    let (sftp, _sess, _tcp) = sftp_connect_with(host, username, auth, expected_host_fp_sha256_b64)?;
+    let base_path = std::path::Path::new(remote_base.trim_end_matches('/'));
+    let _ = sftp.stat(base_path)?;
+    Ok(())
+}
+
 // Auth-aware variant supporting SSH keys and host key verification
 pub fn upload_chunk_sftp_auth(
     host: &str,
