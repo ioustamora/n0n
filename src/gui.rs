@@ -1,10 +1,10 @@
 use eframe::egui;
-use base64::{engine::general_purpose, Engine as _};
+use base64::Engine as _;
 use std::sync::{Arc, Mutex};
 use std::path::PathBuf;
 use anyhow::Result;
 use std::thread;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering, AtomicUsize};
 use notify::{recommended_watcher, RecursiveMode, Watcher};
 use crate::storage;
 use crate::crypto;
@@ -30,10 +30,17 @@ pub struct AppState {
     pub sftp_private_key: String,
     pub sftp_private_key_pass: String,
     pub sftp_host_fingerprint_sha256_b64: String,
+    pub sftp_require_host_fp: bool,
     // watcher state
     pub watcher_running: bool,
     pub watcher_stop: Option<Arc<AtomicBool>>,
     pub watcher_handle: Option<std::thread::JoinHandle<()>>,
+    // job progress state
+    pub job_progress_total: Option<Arc<AtomicUsize>>,
+    pub job_progress_done: Option<Arc<AtomicUsize>>,
+    pub job_cancel: Option<Arc<AtomicBool>>,
+    pub job_running: bool,
+    pub job_last_label: String,
 }
 
 impl AppState {
@@ -115,6 +122,7 @@ impl eframe::App for AppState {
             ui.horizontal(|ui| { ui.label("Private key path (PEM/OpenSSH):"); ui.text_edit_singleline(&mut self.sftp_private_key); });
             ui.horizontal(|ui| { ui.label("Private key passphrase:"); ui.text_edit_singleline(&mut self.sftp_private_key_pass); });
             ui.horizontal(|ui| { ui.label("Host key SHA-256 (base64) optional:"); ui.text_edit_singleline(&mut self.sftp_host_fingerprint_sha256_b64); });
+            ui.horizontal(|ui| { ui.checkbox(&mut self.sftp_require_host_fp, "Require host fingerprint"); });
                     ui.horizontal(|ui| { ui.label("Remote base path:"); ui.text_edit_singleline(&mut self.sftp_base); });
             ui.horizontal(|ui| { ui.label("Mailbox ID (folder name):"); ui.text_edit_singleline(&mut self.sftp_mailbox_id); });
             ui.label("Note: defaults to recipient key string if empty.");
@@ -137,116 +145,79 @@ impl eframe::App for AppState {
                     let sftp_pk = self.sftp_private_key.clone();
                     let sftp_pk_pass = self.sftp_private_key_pass.clone();
                     let sftp_host_fp = self.sftp_host_fingerprint_sha256_b64.clone();
+                    let sftp_require_host_fp = self.sftp_require_host_fp;
                     let backend = self.storage_backend;
                     let mailbox_id = if self.sftp_mailbox_id.trim().is_empty() { self.recipient_pk.clone() } else { self.sftp_mailbox_id.clone() };
 
-                    self.log("Starting background encryption...");
-                    thread::spawn(move || {
-                        // initialize crypto
-                        crypto::init();
-                        let log = |s: &str| {
-                            if let Ok(mut l) = logs.lock() { l.push(s.to_string()); }
-                        };
+                    if backend == 1 && sftp_require_host_fp && sftp_host_fp.trim().is_empty() {
+                        self.log("Host fingerprint required but not provided");
+                    } else {
+                        // initialize job progress state
+                        let total = Arc::new(AtomicUsize::new(0));
+                        let done = Arc::new(AtomicUsize::new(0));
+                        let cancel = Arc::new(AtomicBool::new(false));
+                        self.job_progress_total = Some(total.clone());
+                        self.job_progress_done = Some(done.clone());
+                        self.job_cancel = Some(cancel.clone());
+                        self.job_running = true;
+                        self.job_last_label = selected_file
+                            .as_ref()
+                            .map(|p| p.display().to_string())
+                            .or_else(|| selected_folder.as_ref().map(|p| p.display().to_string()))
+                            .unwrap_or_else(|| "job".to_string());
 
-                        if let Some(file) = selected_file {
-                            log(&format!("Encrypting file: {:?}", file));
-                            if backend == 0 {
-                                let total = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-                                let done = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-                                let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-                                let _ = storage::process_file_encrypt(
-                                    &file,
-                                    &file.parent().unwrap_or(&output),
-                                    &recipient,
-                                    sender.as_deref(),
-                                    &output,
-                                    (chunk_mb as usize) * 1024 * 1024,
-                                    Some((total.clone(), done.clone())),
-                                    Some(cancel.clone()),
-                                );
-                            } else {
-                                if !sftp_pk.is_empty() || !sftp_host_fp.is_empty() {
-                                    let pw_opt = if sftp_pass.is_empty() { None } else { Some(sftp_pass.as_str()) };
-                                    let pk_opt = if sftp_pk.is_empty() { None } else { Some(sftp_pk.as_str()) };
-                                    let pk_pass_opt = if sftp_pk_pass.is_empty() { None } else { Some(sftp_pk_pass.as_str()) };
-                                    let hostfp_opt = if sftp_host_fp.is_empty() { None } else { Some(sftp_host_fp.as_str()) };
-                                    let total = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-                                    let done = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-                                    let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-                                    let _ = storage::process_file_encrypt_to_sftp_auth(
-                                        &file,
-                                        &file.parent().unwrap_or(&output),
-                                        &recipient,
-                                        &mailbox_id,
-                                        sender.as_deref(),
-                                        &sftp_host,
-                                        &sftp_user,
-                                        pw_opt,
-                                        pk_opt,
-                                        pk_pass_opt,
-                                        hostfp_opt,
-                                        &sftp_base,
-                                        (chunk_mb as usize) * 1024 * 1024,
-                                        Some((total.clone(), done.clone())),
-                                        Some(cancel.clone()),
-                                    );
+                        self.log("Starting background encryption...");
+                        thread::spawn(move || {
+                            let _ = crypto::init();
+                            let log = |s: &str| {
+                                if let Ok(mut l) = logs.lock() { l.push(s.to_string()); }
+                            };
+
+                            if let Some(file) = selected_file {
+                                log(&format!("Encrypting file: {:?}", file));
+                                let chunk_bytes = (chunk_mb as usize) * 1024 * 1024;
+                                if backend == 0 {
+                                    let _ = storage::process_file_encrypt(&file, &file.parent().unwrap_or(&output), &recipient, sender.as_deref(), &output, chunk_bytes, Some((total.clone(), done.clone())), Some(cancel.clone()));
                                 } else {
-                                    let total = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-                                    let done = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-                                    let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-                                    let _ = storage::process_file_encrypt_to_sftp(
-                                        &file,
-                                        &file.parent().unwrap_or(&output),
-                                        &recipient,
-                                        &mailbox_id,
-                                        sender.as_deref(),
-                                        &sftp_host,
-                                        &sftp_user,
-                                        &sftp_pass,
-                                        &sftp_base,
-                                        (chunk_mb as usize) * 1024 * 1024,
-                                        Some((total.clone(), done.clone())),
-                                        Some(cancel.clone()),
-                                    );
-                                }
-                            }
-                            log("File encryption completed");
-                        } else if let Some(folder) = selected_folder {
-                            log(&format!("Encrypting folder: {:?}", folder));
-                            // walk folder recursively
-                            for entry in walkdir::WalkDir::new(&folder).into_iter().filter_map(|e| e.ok()) {
-                                if entry.file_type().is_file() {
-                                    let path = entry.path().to_path_buf();
-                                    if backend == 0 {
-                                        let total = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-                                        let done = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-                                        let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-                                        let _ = storage::process_file_encrypt(&path, &folder, &recipient, sender.as_deref(), &output, (chunk_mb as usize) * 1024 * 1024, Some((total.clone(), done.clone())), Some(cancel.clone()));
+                                    if !sftp_pk.is_empty() || !sftp_host_fp.is_empty() {
+                                        let pw_opt = if sftp_pass.is_empty() { None } else { Some(sftp_pass.as_str()) };
+                                        let pk_opt = if sftp_pk.is_empty() { None } else { Some(sftp_pk.as_str()) };
+                                        let pk_pass_opt = if sftp_pk_pass.is_empty() { None } else { Some(sftp_pk_pass.as_str()) };
+                                        let hostfp_opt = if sftp_host_fp.is_empty() { None } else { Some(sftp_host_fp.as_str()) };
+                                        let _ = storage::process_file_encrypt_to_sftp_auth(&file, &file.parent().unwrap_or(&output), &recipient, &mailbox_id, sender.as_deref(), &sftp_host, &sftp_user, pw_opt, pk_opt, pk_pass_opt, hostfp_opt, &sftp_base, chunk_bytes, Some((total.clone(), done.clone())), Some(cancel.clone()));
                                     } else {
-                                        if !sftp_pk.is_empty() || !sftp_host_fp.is_empty() {
-                                            let pw_opt = if sftp_pass.is_empty() { None } else { Some(sftp_pass.as_str()) };
-                                            let pk_opt = if sftp_pk.is_empty() { None } else { Some(sftp_pk.as_str()) };
-                                            let pk_pass_opt = if sftp_pk_pass.is_empty() { None } else { Some(sftp_pk_pass.as_str()) };
-                                            let hostfp_opt = if sftp_host_fp.is_empty() { None } else { Some(sftp_host_fp.as_str()) };
-                                            let total = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-                                            let done = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-                                            let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-                                            let _ = storage::process_file_encrypt_to_sftp_auth(&path, &folder, &recipient, &mailbox_id, sender.as_deref(), &sftp_host, &sftp_user, pw_opt, pk_opt, pk_pass_opt, hostfp_opt, &sftp_base, (chunk_mb as usize) * 1024 * 1024, Some((total.clone(), done.clone())), Some(cancel.clone()));
-                                        } else {
-                                            let total = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-                                            let done = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-                                            let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-                                            let _ = storage::process_file_encrypt_to_sftp(&path, &folder, &recipient, &mailbox_id, sender.as_deref(), &sftp_host, &sftp_user, &sftp_pass, &sftp_base, (chunk_mb as usize) * 1024 * 1024, Some((total.clone(), done.clone())), Some(cancel.clone()));
-                                        }
+                                        let _ = storage::process_file_encrypt_to_sftp(&file, &file.parent().unwrap_or(&output), &recipient, &mailbox_id, sender.as_deref(), &sftp_host, &sftp_user, &sftp_pass, &sftp_base, chunk_bytes, Some((total.clone(), done.clone())), Some(cancel.clone()));
                                     }
-                                    log(&format!("Encrypted {:?}", path));
                                 }
+                                log("File encryption completed");
+                            } else if let Some(folder) = selected_folder {
+                                log(&format!("Encrypting folder: {:?}", folder));
+                                for entry in walkdir::WalkDir::new(&folder).into_iter().filter_map(|e| e.ok()) {
+                                    if entry.file_type().is_file() {
+                                        let path = entry.path().to_path_buf();
+                                        let chunk_bytes = (chunk_mb as usize) * 1024 * 1024;
+                                        if backend == 0 {
+                                            let _ = storage::process_file_encrypt(&path, &folder, &recipient, sender.as_deref(), &output, chunk_bytes, None, None);
+                                        } else {
+                                            if !sftp_pk.is_empty() || !sftp_host_fp.is_empty() {
+                                                let pw_opt = if sftp_pass.is_empty() { None } else { Some(sftp_pass.as_str()) };
+                                                let pk_opt = if sftp_pk.is_empty() { None } else { Some(sftp_pk.as_str()) };
+                                                let pk_pass_opt = if sftp_pk_pass.is_empty() { None } else { Some(sftp_pk_pass.as_str()) };
+                                                let hostfp_opt = if sftp_host_fp.is_empty() { None } else { Some(sftp_host_fp.as_str()) };
+                                                let _ = storage::process_file_encrypt_to_sftp_auth(&path, &folder, &recipient, &mailbox_id, sender.as_deref(), &sftp_host, &sftp_user, pw_opt, pk_opt, pk_pass_opt, hostfp_opt, &sftp_base, chunk_bytes, None, None);
+                                            } else {
+                                                let _ = storage::process_file_encrypt_to_sftp(&path, &folder, &recipient, &mailbox_id, sender.as_deref(), &sftp_host, &sftp_user, &sftp_pass, &sftp_base, chunk_bytes, None, None);
+                                            }
+                                        }
+                                        log(&format!("Encrypted {:?}", path));
+                                    }
+                                }
+                                log("Folder encryption completed");
+                            } else {
+                                log("No file or folder selected");
                             }
-                            log("Folder encryption completed");
-                        } else {
-                            log("No file or folder selected");
-                        }
-                    });
+                        });
+                    }
                 }
                 if ui.button("Assemble & Decrypt").clicked() {
                     let output = PathBuf::from(self.output_dir.clone());
@@ -288,6 +259,28 @@ impl eframe::App for AppState {
             });
 
             ui.separator();
+            // lightweight progress bar and cancel
+            if self.job_running {
+                let (mut total, mut done) = (0usize, 0usize);
+                if let (Some(t), Some(d)) = (&self.job_progress_total, &self.job_progress_done) {
+                    total = t.load(Ordering::Relaxed);
+                    done = d.load(Ordering::Relaxed);
+                }
+                let pct = if total > 0 { (done as f32 / total as f32) * 100.0 } else { 0.0 };
+                ui.horizontal(|ui| {
+                    ui.label(format!("Job: {}", self.job_last_label));
+                    ui.label(format!("Progress: {done}/{total} ({pct:.0}%)"));
+                    if ui.button("Cancel").clicked() {
+                        if let Some(c) = &self.job_cancel { c.store(true, Ordering::Relaxed); }
+                        self.log("Cancel requested");
+                    }
+                });
+                // auto-finish when counters complete
+                if total > 0 && done >= total {
+                    self.job_running = false;
+                    self.job_cancel = None;
+                }
+            }
             ui.horizontal(|ui| {
                 ui.label("Folder watcher:");
                 if ui.button(if self.watcher_running { "Stop Watch" } else { "Start Watch" }).clicked() {
@@ -375,7 +368,30 @@ impl eframe::App for AppState {
 
 pub fn run_gui() -> Result<()> {
     let options = eframe::NativeOptions::default();
-    let app = AppState { chunk_size_mb: 10, recipient_pk: String::new(), recipient_sk: String::new(), sender_sk: String::new(), sftp_host: String::new(), sftp_user: String::new(), sftp_pass: String::new(), sftp_base: String::new(), sftp_mailbox_id: String::new(), sftp_private_key: String::new(), sftp_private_key_pass: String::new(), sftp_host_fingerprint_sha256_b64: String::new(), watcher_running: false, watcher_stop: None, watcher_handle: None, ..Default::default() };
+    let app = AppState {
+        chunk_size_mb: 10,
+        recipient_pk: String::new(),
+        recipient_sk: String::new(),
+        sender_sk: String::new(),
+        sftp_host: String::new(),
+        sftp_user: String::new(),
+        sftp_pass: String::new(),
+        sftp_base: String::new(),
+        sftp_mailbox_id: String::new(),
+        sftp_private_key: String::new(),
+        sftp_private_key_pass: String::new(),
+        sftp_host_fingerprint_sha256_b64: String::new(),
+        sftp_require_host_fp: false,
+        watcher_running: false,
+        watcher_stop: None,
+        watcher_handle: None,
+        job_progress_total: None,
+        job_progress_done: None,
+        job_cancel: None,
+        job_running: false,
+        job_last_label: String::new(),
+        ..Default::default()
+    };
     let _ = eframe::run_native("n0n", options, Box::new(|_cc| Box::new(app)));
     Ok(())
 }
