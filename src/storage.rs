@@ -11,6 +11,7 @@ use serde_json;
 use rand::RngCore;
 use anyhow::anyhow;
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
 pub fn process_file_encrypt(file_path: &Path, root_folder: &Path, recipient_pk_b64: &str, sender_sk_b64: Option<&str>, mailbox_base: &Path) -> Result<()> {
     // determine relative path
@@ -144,5 +145,66 @@ pub fn assemble_from_mailbox(mailbox: &Path, recipient_sk_b64: &str, output_root
         }
     }
 
+    Ok(())
+}
+
+pub fn assemble_from_mailbox_with_logs(mailbox: &Path, recipient_sk_b64: &str, output_root: &Path, logs: Arc<Mutex<Vec<String>>>) -> Result<()> {
+    let chunks_dir = mailbox.join("chunks");
+    if !chunks_dir.exists() { return Err(anyhow!("chunks directory missing")); }
+
+    // parse recipient secret key
+    let sk_bytes = general_purpose::STANDARD.decode(recipient_sk_b64)?;
+    let recipient_sk = crypto::SecretKey::from_slice(&sk_bytes).ok_or_else(|| anyhow!("Invalid recipient secret key"))?;
+
+    // map file_sha -> Vec<ChunkMeta>
+    let mut files: HashMap<String, Vec<ChunkMeta>> = HashMap::new();
+
+    for entry in std::fs::read_dir(&chunks_dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.extension().and_then(|s| s.to_str()) == Some("sender") { continue; }
+        if path.extension().and_then(|s| s.to_str()) == Some("nonce") { continue; }
+
+        let fname = path.file_name().and_then(|s| s.to_str()).unwrap_or("?").to_string();
+        if let Ok(mut l) = logs.lock() { l.push(format!("Reading chunk {}", fname)); }
+
+        let encrypted = std::fs::read(&path)?;
+        let sha = fname.clone();
+
+        // read nonce and sender files
+        let nonce_path = chunks_dir.join(format!("{}.nonce", sha));
+        let sender_path = chunks_dir.join(format!("{}.sender", sha));
+        let nonce_b64 = std::fs::read_to_string(&nonce_path)?;
+        let sender_b64 = std::fs::read_to_string(&sender_path)?;
+
+        let sender_bytes = general_purpose::STANDARD.decode(sender_b64.trim())?;
+        let sender_pk = crypto::PublicKey::from_slice(&sender_bytes).ok_or_else(|| anyhow!("Invalid sender public key"))?;
+
+        if let Ok(mut l) = logs.lock() { l.push(format!("Decrypting chunk {}", fname)); }
+
+        // decrypt
+        let json = crypto::decrypt_chunk(&encrypted, nonce_b64.trim(), &sender_pk, &recipient_sk)?;
+        let meta: ChunkMeta = serde_json::from_slice(&json)?;
+
+        files.entry(meta.file_sha256.clone()).or_default().push(meta);
+    }
+
+    // assemble files
+    for (_sha, mut metas) in files {
+        metas.sort_by_key(|m| m.chunk_index);
+        if let Ok(mut l) = logs.lock() { l.push(format!("Assembling file {} ({} chunks)", metas.first().map(|m| m.file_name.clone()).unwrap_or_default(), metas.len())); }
+        let assembled = chunk::assemble_file_from_chunks(&metas)?;
+        chunk::verify_file_integrity(&metas, &assembled)?;
+
+        // write file preserving relative path
+        if let Some(first) = metas.first() {
+            let out_path = output_root.join(&first.file_name);
+            if let Some(parent) = out_path.parent() { std::fs::create_dir_all(parent)?; }
+            write_bytes_to_file(&out_path, &assembled)?;
+            if let Ok(mut l) = logs.lock() { l.push(format!("Wrote {}", out_path.display())); }
+        }
+    }
+
+    if let Ok(mut l) = logs.lock() { l.push("Assembly finished".to_string()); }
     Ok(())
 }

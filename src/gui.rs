@@ -113,16 +113,17 @@ impl eframe::App for AppState {
                     });
                 }
                 if ui.button("Assemble & Decrypt").clicked() {
-                    let logs = self.logs.clone();
                     let output = PathBuf::from(self.output_dir.clone());
                     let mailbox = self.selected_folder.clone().unwrap_or_else(|| output.clone());
-                    let recipient_sk = self.sender_sk.clone();
+                    let recipient_sk = self.recipient_pk.clone();
                     self.log("Starting assemble in background...");
+                    let logs_clone = self.logs.clone();
                     std::thread::spawn(move || {
                         let _ = crypto::init();
-                        if let Ok(mut l) = logs.lock() { l.push("Assembling from mailbox...".to_string()); }
-                        let _ = storage::assemble_from_mailbox(&mailbox, &recipient_sk, &output);
-                        if let Ok(mut l) = logs.lock() { l.push("Assemble complete".to_string()); }
+                        if let Ok(mut l) = logs_clone.lock() { l.push("Assembling from mailbox...".to_string()); }
+                        let logs_for_call = logs_clone.clone();
+                        let _ = storage::assemble_from_mailbox_with_logs(&mailbox, &recipient_sk, &output, logs_for_call);
+                        if let Ok(mut l) = logs_clone.lock() { l.push("Assemble complete".to_string()); }
                     });
                 }
             });
