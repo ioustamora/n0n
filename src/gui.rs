@@ -7,6 +7,7 @@ use std::thread;
 use std::sync::atomic::{AtomicBool, Ordering, AtomicUsize};
 use notify::{recommended_watcher, RecursiveMode, Watcher};
 use crate::storage;
+use crate::search;
 use crate::crypto;
 
 #[derive(Default)]
@@ -41,6 +42,9 @@ pub struct AppState {
     pub job_cancel: Option<Arc<AtomicBool>>,
     pub job_running: bool,
     pub job_last_label: String,
+    // simple search
+    pub search_hash: String,
+    pub search_base: String,
 }
 
 impl AppState {
@@ -230,8 +234,12 @@ impl eframe::App for AppState {
                     let sftp_pk = self.sftp_private_key.clone();
                     let sftp_pk_pass = self.sftp_private_key_pass.clone();
                     let sftp_host_fp = self.sftp_host_fingerprint_sha256_b64.clone();
+                    let sftp_require_host_fp = self.sftp_require_host_fp;
                     let backend = self.storage_backend;
                     let mailbox_id = if self.sftp_mailbox_id.trim().is_empty() { self.recipient_pk.clone() } else { self.sftp_mailbox_id.clone() };
+                    if backend == 1 && sftp_require_host_fp && sftp_host_fp.trim().is_empty() {
+                        self.log("Host fingerprint required but not provided");
+                    } else {
                     self.log("Starting assemble in background...");
                     let logs_clone = self.logs.clone();
                     std::thread::spawn(move || {
@@ -255,7 +263,37 @@ impl eframe::App for AppState {
                         }
                         if let Ok(mut l) = logs_clone.lock() { l.push("Assemble complete".to_string()); }
                     });
+                    }
                 }
+            });
+
+            ui.separator();
+            ui.group(|ui| {
+                ui.label("Search chunks by SHA (local)");
+                ui.horizontal(|ui| {
+                    ui.label("SHA-256 (hex or name):");
+                    ui.text_edit_singleline(&mut self.search_hash);
+                });
+                ui.horizontal(|ui| {
+                    ui.label("Base dir:");
+                    if self.search_base.is_empty() { self.search_base = self.output_dir.clone(); }
+                    ui.text_edit_singleline(&mut self.search_base);
+                    if ui.button("Browse").clicked() {
+                        if let Some(path) = rfd::FileDialog::new().pick_folder() {
+                            self.search_base = path.display().to_string();
+                        }
+                    }
+                    if ui.button("Search").clicked() {
+                        let base = std::path::PathBuf::from(self.search_base.clone());
+                        match search::search_by_hash_local(&base, &self.search_hash) {
+                            Ok(paths) => {
+                                if paths.is_empty() { self.log("No matches"); }
+                                for p in paths { self.log(&format!("Found: {}", p.display())); }
+                            }
+                            Err(e) => self.log(&format!("Search error: {e}")),
+                        }
+                    }
+                });
             });
 
             ui.separator();
@@ -390,6 +428,8 @@ pub fn run_gui() -> Result<()> {
         job_cancel: None,
         job_running: false,
         job_last_label: String::new(),
+    search_hash: String::new(),
+    search_base: String::new(),
         ..Default::default()
     };
     let _ = eframe::run_native("n0n", options, Box::new(|_cc| Box::new(app)));
