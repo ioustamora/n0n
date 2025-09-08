@@ -17,12 +17,19 @@ cargo run
 	- Optional but recommended: set the server SSH host key fingerprint (SHA-256 base64). Enable “Require host fingerprint” to enforce it.
 	- Click “Split & Encrypt” to upload/save chunks into a recipient mailbox.
 	- Use “Assemble & Decrypt” to reassemble files from a mailbox to the output dir.
+	- Dry-run (no write): enable the checkbox to simulate processing and progress without writing or uploading chunks.
+	- Watcher: start/stop a folder watcher; configure the debounce (ms) to reduce duplicate events.
 
 Security bits
 
 - Per-chunk crypto box semantics (X25519 + XSalsa20-Poly1305 via libsodium). Each chunk has a unique random nonce; the sender public key and nonce are stored alongside the encrypted chunk.
 - The encrypted chunk filename is the SHA-256 of the ciphertext, enabling deduplication.
 - SFTP: atomic upload (temp + rename). Optional strict host key verification (SHA-256 base64 of the raw SSH host key).
+
+UX polish
+
+- Dry-run mode simulates estimated chunking and updates progress/status without filesystem or network writes.
+- Folder watcher debounces duplicate rapid events per path (configurable, default 750 ms).
 
 Tests
 
