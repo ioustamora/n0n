@@ -46,6 +46,9 @@ pub struct AppState {
     pub job_running: bool,
     pub job_last_label: String,
     pub job_pause: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
+    // per-file sub-progress (derived from job counters)
+    pub file_est_total: Option<Arc<AtomicUsize>>,
+    pub file_start_done: Option<Arc<AtomicUsize>>,
     // simple search
     pub search_hash: String,
     pub search_base: String,
@@ -118,6 +121,17 @@ impl eframe::App for AppState {
                 ui.add(egui::DragValue::new(&mut self.chunk_size_mb).clamp_range(1..=1024));
                 ui.label("Output dir:");
                 ui.text_edit_singleline(&mut self.output_dir);
+                if ui.button("Browse").clicked() {
+                    if let Some(path) = rfd::FileDialog::new().pick_folder() {
+                        self.output_dir = path.display().to_string();
+                    }
+                }
+                if ui.button("Open").clicked() {
+                    if !self.output_dir.is_empty() {
+                        let p = std::path::PathBuf::from(self.output_dir.clone());
+                        let _ = open_folder_in_os(&p);
+                    }
+                }
             });
 
             ui.horizontal(|ui| {
@@ -182,6 +196,11 @@ impl eframe::App for AppState {
                         self.job_cancel = Some(cancel.clone());
                         let pause = Arc::new(AtomicBool::new(false));
                         self.job_pause = Some(pause.clone());
+                        // per-file progress trackers
+                        let file_est = Arc::new(AtomicUsize::new(0));
+                        let file_start = Arc::new(AtomicUsize::new(0));
+                        self.file_est_total = Some(file_est.clone());
+                        self.file_start_done = Some(file_start.clone());
                         self.job_running = true;
                         self.job_last_label = selected_file
                             .as_ref()
@@ -208,10 +227,16 @@ impl eframe::App for AppState {
                                         }
                                         Err(_) => 1,
                                     };
+                                    file_start.store(done.load(Ordering::Relaxed), Ordering::Relaxed);
+                                    file_est.store(est_chunks, Ordering::Relaxed);
                                     total.store(est_chunks, Ordering::Relaxed);
                                     if let Ok(mut s) = status_arc.lock() { *s = format!("Dry-run: would process {:?}", file); }
                                     for _ in 0..est_chunks { done.fetch_add(1, Ordering::Relaxed); }
                                 } else if backend == 0 {
+                                    // set per-file progress baselines
+                                    let est_chunks = match std::fs::metadata(&file) { Ok(m) => utils::estimate_chunks(m.len() as usize, chunk_bytes), Err(_) => 1 };
+                                    file_start.store(done.load(Ordering::Relaxed), Ordering::Relaxed);
+                                    file_est.store(est_chunks, Ordering::Relaxed);
                                     let _ = storage::process_file_encrypt(&file, &file.parent().unwrap_or(&output), &recipient, sender.as_deref(), &output, chunk_bytes, Some((total.clone(), done.clone())), Some(cancel.clone()));
                                 } else {
                                     if !sftp_pk.is_empty() || !sftp_host_fp.is_empty() {
@@ -219,8 +244,14 @@ impl eframe::App for AppState {
                                         let pk_opt = if sftp_pk.is_empty() { None } else { Some(sftp_pk.as_str()) };
                                         let pk_pass_opt = if sftp_pk_pass.is_empty() { None } else { Some(sftp_pk_pass.as_str()) };
                                         let hostfp_opt = if sftp_host_fp.is_empty() { None } else { Some(sftp_host_fp.as_str()) };
+                                        let est_chunks = match std::fs::metadata(&file) { Ok(m) => utils::estimate_chunks(m.len() as usize, chunk_bytes), Err(_) => 1 };
+                                        file_start.store(done.load(Ordering::Relaxed), Ordering::Relaxed);
+                                        file_est.store(est_chunks, Ordering::Relaxed);
                                         let _ = storage::process_file_encrypt_to_sftp_auth(&file, &file.parent().unwrap_or(&output), &recipient, &mailbox_id, sender.as_deref(), &sftp_host, &sftp_user, pw_opt, pk_opt, pk_pass_opt, hostfp_opt, &sftp_base, chunk_bytes, Some((total.clone(), done.clone())), Some(cancel.clone()));
                                     } else {
+                                        let est_chunks = match std::fs::metadata(&file) { Ok(m) => utils::estimate_chunks(m.len() as usize, chunk_bytes), Err(_) => 1 };
+                                        file_start.store(done.load(Ordering::Relaxed), Ordering::Relaxed);
+                                        file_est.store(est_chunks, Ordering::Relaxed);
                                         let _ = storage::process_file_encrypt_to_sftp(&file, &file.parent().unwrap_or(&output), &recipient, &mailbox_id, sender.as_deref(), &sftp_host, &sftp_user, &sftp_pass, &sftp_base, chunk_bytes, Some((total.clone(), done.clone())), Some(cancel.clone()));
                                     }
                                 }
@@ -265,11 +296,16 @@ impl eframe::App for AppState {
                                                 }
                                                 Err(_) => 1,
                                             };
+                                            file_start.store(done.load(Ordering::Relaxed), Ordering::Relaxed);
+                                            file_est.store(est_chunks, Ordering::Relaxed);
                                             for _ in 0..est_chunks { done.fetch_add(1, std::sync::atomic::Ordering::Relaxed); }
                                             if let Ok(mut s) = status_arc.lock() { *s = format!("Dry-run: would process {:?}", path); }
                                             continue;
                                         }
                                         if backend == 0 {
+                                            let est_chunks = match std::fs::metadata(&path) { Ok(m) => utils::estimate_chunks(m.len() as usize, chunk_bytes), Err(_) => 1 };
+                                            file_start.store(done.load(Ordering::Relaxed), Ordering::Relaxed);
+                                            file_est.store(est_chunks, Ordering::Relaxed);
                                             let _ = storage::process_file_encrypt(&path, &folder, &recipient, sender.as_deref(), &output, chunk_bytes, Some((total.clone(), done.clone())), Some(cancel.clone()));
                                         } else {
                                             if !sftp_pk.is_empty() || !sftp_host_fp.is_empty() {
@@ -277,8 +313,14 @@ impl eframe::App for AppState {
                                                 let pk_opt = if sftp_pk.is_empty() { None } else { Some(sftp_pk.as_str()) };
                                                 let pk_pass_opt = if sftp_pk_pass.is_empty() { None } else { Some(sftp_pk_pass.as_str()) };
                                                 let hostfp_opt = if sftp_host_fp.is_empty() { None } else { Some(sftp_host_fp.as_str()) };
+                                                let est_chunks = match std::fs::metadata(&path) { Ok(m) => utils::estimate_chunks(m.len() as usize, chunk_bytes), Err(_) => 1 };
+                                                file_start.store(done.load(Ordering::Relaxed), Ordering::Relaxed);
+                                                file_est.store(est_chunks, Ordering::Relaxed);
                                                 let _ = storage::process_file_encrypt_to_sftp_auth(&path, &folder, &recipient, &mailbox_id, sender.as_deref(), &sftp_host, &sftp_user, pw_opt, pk_opt, pk_pass_opt, hostfp_opt, &sftp_base, chunk_bytes, Some((total.clone(), done.clone())), Some(cancel.clone()));
                                             } else {
+                                                let est_chunks = match std::fs::metadata(&path) { Ok(m) => utils::estimate_chunks(m.len() as usize, chunk_bytes), Err(_) => 1 };
+                                                file_start.store(done.load(Ordering::Relaxed), Ordering::Relaxed);
+                                                file_est.store(est_chunks, Ordering::Relaxed);
                                                 let _ = storage::process_file_encrypt_to_sftp(&path, &folder, &recipient, &mailbox_id, sender.as_deref(), &sftp_host, &sftp_user, &sftp_pass, &sftp_base, chunk_bytes, Some((total.clone(), done.clone())), Some(cancel.clone()));
                                             }
                                         }
@@ -391,11 +433,24 @@ impl eframe::App for AppState {
                 if let Ok(s) = self.file_status.lock() {
                     if !s.is_empty() { ui.label(format!("Status: {}", &*s)); }
                 }
+                // show per-file sub-progress if available
+                if let (Some(est), Some(start)) = (&self.file_est_total, &self.file_start_done) {
+                    let est_v = est.load(Ordering::Relaxed);
+                    let start_v = start.load(Ordering::Relaxed);
+                    if est_v > 0 {
+                        let cur_done = if let Some(d) = &self.job_progress_done { d.load(Ordering::Relaxed).saturating_sub(start_v) } else { 0 };
+                        let cur = cur_done.min(est_v);
+                        let pct_file = (cur as f32 / est_v as f32) * 100.0;
+                        ui.label(format!("File: {cur}/{est_v} ({pct_file:.0}%)"));
+                    }
+                }
                 // auto-finish when counters complete
                 if total > 0 && done >= total {
                     self.job_running = false;
                     self.job_cancel = None;
                     self.job_pause = None;
+                    self.file_est_total = None;
+                    self.file_start_done = None;
                     if let Ok(mut s) = self.file_status.lock() { s.clear(); }
                 }
             }
@@ -533,11 +588,14 @@ pub fn run_gui() -> Result<()> {
     job_running: false,
     job_last_label: String::new(),
     job_pause: None,
+    file_est_total: None,
+    file_start_done: None,
     search_hash: String::new(),
     search_base: String::new(),
         skip_hidden: true,
     dry_run: false,
     file_status: Default::default(),
+    watcher_debounce_ms: 750,
         ..Default::default()
     };
     let _ = eframe::run_native("n0n", options, Box::new(|_cc| Box::new(app)));
@@ -553,5 +611,21 @@ fn is_hidden_path(p: &Path) -> bool {
         }
     }
     false
+}
+
+fn open_folder_in_os(path: &Path) -> Result<()> {
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer").arg(path).spawn()?;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open").arg(path).spawn()?;
+    }
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open").arg(path).spawn()?;
+    }
+    Ok(())
 }
 
