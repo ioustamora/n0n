@@ -54,6 +54,7 @@ pub fn assemble_file_from_chunks(chunk_metas: &[ChunkMeta]) -> Result<Vec<u8>> {
 	Ok(file_data)
 }
 
+#[allow(dead_code)]
 pub fn verify_chunk_integrity(chunk: &ChunkMeta) -> Result<()> {
 	let chunk_data = crate::utils::decode_base64(&chunk.data)?;
 	let computed_sha = compute_sha256(&chunk_data);

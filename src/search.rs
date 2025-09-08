@@ -1,6 +1,7 @@
 use anyhow::Result;
 use std::path::Path;
 
+#[allow(dead_code)]
 pub fn search_by_hash_local(base: &Path, hash: &str) -> Result<Vec<std::path::PathBuf>> {
     let mut results = Vec::new();
     if base.exists() {

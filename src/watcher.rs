@@ -2,6 +2,7 @@ use notify::{recommended_watcher, RecursiveMode, Result as NotifyResult, Event, 
 use std::path::PathBuf;
 use std::sync::mpsc::{channel, Receiver};
 
+#[allow(dead_code)]
 pub fn watch_folder(path: PathBuf) -> NotifyResult<Receiver<Event>> {
     let (tx, rx) = channel();
     let mut watcher = recommended_watcher(move |res| {

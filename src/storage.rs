@@ -110,6 +110,7 @@ pub fn save_chunk_local(mailbox: &Path, encrypted: &[u8]) -> Result<String> {
 }
 
 // SFTP and cloud backends are left as placeholders for now.
+#[allow(dead_code)]
 pub async fn ensure_mailbox_sftp(_host: &str, _user: &str, _password: &str, _path: &str, _recipient: &str) -> Result<()> {
     // TODO: implement SFTP mailbox creation
     Ok(())
@@ -328,6 +329,7 @@ pub fn upload_chunk_sftp_auth(
     Ok(())
 }
 
+#[allow(dead_code)]
 pub fn download_remote_file(host: &str, username: &str, password: &str, remote_path: &str) -> Result<Vec<u8>> {
     let (sftp, _sess, _tcp) = sftp_connect(host, username, password)?;
     let mut remote = sftp.open(remote_path)?;
@@ -336,6 +338,7 @@ pub fn download_remote_file(host: &str, username: &str, password: &str, remote_p
     Ok(buf)
 }
 
+#[allow(dead_code)]
 pub fn download_remote_file_auth(host: &str, username: &str, password: Option<&str>, private_key: Option<&str>, private_key_pass: Option<&str>, expected_host_fp_sha256_b64: Option<&str>, remote_path: &str) -> Result<Vec<u8>> {
     let auth = match (private_key, password) {
         (Some(pk), _) => SshAuth::Key { private_key: pk, passphrase: private_key_pass },
@@ -712,6 +715,7 @@ pub fn assemble_from_sftp_with_logs_auth(
     Ok(())
 }
 
+#[allow(dead_code)]
 pub fn assemble_from_mailbox(mailbox: &Path, recipient_sk_b64: &str, output_root: &Path) -> Result<()> {
     let chunks_dir = mailbox.join("chunks");
     if !chunks_dir.exists() { return Err(anyhow!("chunks directory missing")); }

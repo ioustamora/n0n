@@ -18,6 +18,7 @@ pub fn decode_base64(data: &str) -> Result<Vec<u8>> {
 	Ok(general_purpose::STANDARD.decode(data)?)
 }
 
+#[allow(dead_code)]
 pub fn get_file_size(path: &Path) -> Result<u64> {
 	let metadata = fs::metadata(path)?;
 	Ok(metadata.len())

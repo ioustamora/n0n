@@ -13,12 +13,14 @@ pub struct ChunkMeta {
 	pub data: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum StorageBackend {
 	Local(String),
 	Sftp { host: String, username: String, password: String, path: String },
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct ProcessingOptions {
 	pub chunk_size: usize,
