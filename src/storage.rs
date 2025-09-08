@@ -33,7 +33,13 @@ pub fn process_file_encrypt(
     let chunk_size = if chunk_size_bytes == 0 { 10 * 1024 * 1024 } else { chunk_size_bytes };
     let mut metas = chunk::split_file_into_chunks(file_path, chunk_size, &rel_str)?;
 
-    if let Some((total, done)) = &progress { total.store(metas.len() as usize, Ordering::Relaxed); done.store(0, Ordering::Relaxed); }
+    if let Some((total, done)) = &progress {
+        // Only initialize if not already set (supports multi-file jobs setting totals upfront)
+        if total.load(Ordering::Relaxed) == 0 && done.load(Ordering::Relaxed) == 0 {
+            total.store(metas.len() as usize, Ordering::Relaxed);
+            done.store(0, Ordering::Relaxed);
+        }
+    }
 
     // parse recipient public key (expect base64 raw bytes)
     let recipient_pk_bytes = general_purpose::STANDARD.decode(recipient_pk_b64)?;
@@ -366,7 +372,12 @@ pub fn process_file_encrypt_to_sftp(
     let chunk_size = if chunk_size_bytes == 0 { 10 * 1024 * 1024 } else { chunk_size_bytes };
     let mut metas = chunk::split_file_into_chunks(file_path, chunk_size, &rel_str)?;
 
-    if let Some((total, done)) = &progress { total.store(metas.len() as usize, Ordering::Relaxed); done.store(0, Ordering::Relaxed); }
+    if let Some((total, done)) = &progress {
+        if total.load(Ordering::Relaxed) == 0 && done.load(Ordering::Relaxed) == 0 {
+            total.store(metas.len() as usize, Ordering::Relaxed);
+            done.store(0, Ordering::Relaxed);
+        }
+    }
 
     // parse recipient public key
     let recipient_pk_bytes = general_purpose::STANDARD.decode(recipient_pk_b64)?;
@@ -444,7 +455,12 @@ pub fn process_file_encrypt_to_sftp_auth(
     let chunk_size = if chunk_size_bytes == 0 { 10 * 1024 * 1024 } else { chunk_size_bytes };
     let mut metas = chunk::split_file_into_chunks(file_path, chunk_size, &rel_str)?;
 
-    if let Some((total, done)) = &progress { total.store(metas.len() as usize, Ordering::Relaxed); done.store(0, Ordering::Relaxed); }
+    if let Some((total, done)) = &progress {
+        if total.load(Ordering::Relaxed) == 0 && done.load(Ordering::Relaxed) == 0 {
+            total.store(metas.len() as usize, Ordering::Relaxed);
+            done.store(0, Ordering::Relaxed);
+        }
+    }
 
     let recipient_pk_bytes = general_purpose::STANDARD.decode(recipient_pk_b64)?;
     let recipient_pk = crypto::PublicKey::from_slice(&recipient_pk_bytes)

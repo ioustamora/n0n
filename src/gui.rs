@@ -8,6 +8,7 @@ use std::sync::atomic::{AtomicBool, Ordering, AtomicUsize};
 use notify::{recommended_watcher, RecursiveMode, Watcher};
 use crate::storage;
 use crate::search;
+use std::path::Path;
 use crate::crypto;
 
 #[derive(Default)]
@@ -42,9 +43,12 @@ pub struct AppState {
     pub job_cancel: Option<Arc<AtomicBool>>,
     pub job_running: bool,
     pub job_last_label: String,
+    pub job_pause: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
     // simple search
     pub search_hash: String,
     pub search_base: String,
+    // options
+    pub skip_hidden: bool,
 }
 
 impl AppState {
@@ -115,6 +119,7 @@ impl eframe::App for AppState {
                 ui.label("Storage backend:");
                 ui.selectable_value(&mut self.storage_backend, 0, "Local");
                 ui.selectable_value(&mut self.storage_backend, 1, "SFTP");
+                ui.checkbox(&mut self.skip_hidden, "Skip hidden (.*) files");
             });
 
     if self.storage_backend == 1 {
@@ -151,6 +156,7 @@ impl eframe::App for AppState {
                     let sftp_host_fp = self.sftp_host_fingerprint_sha256_b64.clone();
                     let sftp_require_host_fp = self.sftp_require_host_fp;
                     let backend = self.storage_backend;
+                    let skip_hidden_flag = self.skip_hidden;
                     let mailbox_id = if self.sftp_mailbox_id.trim().is_empty() { self.recipient_pk.clone() } else { self.sftp_mailbox_id.clone() };
 
                     if backend == 1 && sftp_require_host_fp && sftp_host_fp.trim().is_empty() {
@@ -163,6 +169,8 @@ impl eframe::App for AppState {
                         self.job_progress_total = Some(total.clone());
                         self.job_progress_done = Some(done.clone());
                         self.job_cancel = Some(cancel.clone());
+                        let pause = Arc::new(AtomicBool::new(false));
+                        self.job_pause = Some(pause.clone());
                         self.job_running = true;
                         self.job_last_label = selected_file
                             .as_ref()
@@ -196,24 +204,47 @@ impl eframe::App for AppState {
                                 log("File encryption completed");
                             } else if let Some(folder) = selected_folder {
                                 log(&format!("Encrypting folder: {:?}", folder));
-                                for entry in walkdir::WalkDir::new(&folder).into_iter().filter_map(|e| e.ok()) {
+                                let chunk_bytes = (chunk_mb as usize) * 1024 * 1024;
+                                // Pre-scan to estimate total chunks
+                                log("Scanning folder to estimate progress...");
+                                let mut total_chunks: usize = 0;
+                for entry in walkdir::WalkDir::new(&folder).into_iter().filter_map(|e| e.ok()) {
                                     if entry.file_type().is_file() {
+                                        if skip_hidden_flag && is_hidden_path(entry.path()) { continue; }
+                                        if let Ok(meta) = entry.metadata() {
+                                            let sz = meta.len() as usize;
+                                            let chunks = if chunk_bytes == 0 { 1 } else { (sz + chunk_bytes - 1) / chunk_bytes };
+                                            total_chunks += chunks.max(1);
+                                        }
+                                    }
+                                }
+                                total.store(total_chunks, std::sync::atomic::Ordering::Relaxed);
+                                done.store(0, std::sync::atomic::Ordering::Relaxed);
+                                // Process files while sharing progress and cancel flags
+                for entry in walkdir::WalkDir::new(&folder).into_iter().filter_map(|e| e.ok()) {
+                                    if entry.file_type().is_file() {
+                                        if skip_hidden_flag && is_hidden_path(entry.path()) { continue; }
+                                        // Pause handling between files
+                                        while pause.load(std::sync::atomic::Ordering::Relaxed) {
+                                            if cancel.load(std::sync::atomic::Ordering::Relaxed) { break; }
+                                            std::thread::sleep(std::time::Duration::from_millis(200));
+                                        }
                                         let path = entry.path().to_path_buf();
-                                        let chunk_bytes = (chunk_mb as usize) * 1024 * 1024;
                                         if backend == 0 {
-                                            let _ = storage::process_file_encrypt(&path, &folder, &recipient, sender.as_deref(), &output, chunk_bytes, None, None);
+                                            let _ = storage::process_file_encrypt(&path, &folder, &recipient, sender.as_deref(), &output, chunk_bytes, Some((total.clone(), done.clone())), Some(cancel.clone()));
                                         } else {
                                             if !sftp_pk.is_empty() || !sftp_host_fp.is_empty() {
                                                 let pw_opt = if sftp_pass.is_empty() { None } else { Some(sftp_pass.as_str()) };
                                                 let pk_opt = if sftp_pk.is_empty() { None } else { Some(sftp_pk.as_str()) };
                                                 let pk_pass_opt = if sftp_pk_pass.is_empty() { None } else { Some(sftp_pk_pass.as_str()) };
                                                 let hostfp_opt = if sftp_host_fp.is_empty() { None } else { Some(sftp_host_fp.as_str()) };
-                                                let _ = storage::process_file_encrypt_to_sftp_auth(&path, &folder, &recipient, &mailbox_id, sender.as_deref(), &sftp_host, &sftp_user, pw_opt, pk_opt, pk_pass_opt, hostfp_opt, &sftp_base, chunk_bytes, None, None);
+                                                let _ = storage::process_file_encrypt_to_sftp_auth(&path, &folder, &recipient, &mailbox_id, sender.as_deref(), &sftp_host, &sftp_user, pw_opt, pk_opt, pk_pass_opt, hostfp_opt, &sftp_base, chunk_bytes, Some((total.clone(), done.clone())), Some(cancel.clone()));
                                             } else {
-                                                let _ = storage::process_file_encrypt_to_sftp(&path, &folder, &recipient, &mailbox_id, sender.as_deref(), &sftp_host, &sftp_user, &sftp_pass, &sftp_base, chunk_bytes, None, None);
+                                                let _ = storage::process_file_encrypt_to_sftp(&path, &folder, &recipient, &mailbox_id, sender.as_deref(), &sftp_host, &sftp_user, &sftp_pass, &sftp_base, chunk_bytes, Some((total.clone(), done.clone())), Some(cancel.clone()));
                                             }
                                         }
                                         log(&format!("Encrypted {:?}", path));
+                                        if cancel.load(std::sync::atomic::Ordering::Relaxed) { break; }
                                     }
                                 }
                                 log("Folder encryption completed");
@@ -308,6 +339,10 @@ impl eframe::App for AppState {
                 ui.horizontal(|ui| {
                     ui.label(format!("Job: {}", self.job_last_label));
                     ui.label(format!("Progress: {done}/{total} ({pct:.0}%)"));
+                    let paused = self.job_pause.as_ref().map(|p| p.load(Ordering::Relaxed)).unwrap_or(false);
+                    if ui.button(if paused { "Resume" } else { "Pause" }).clicked() {
+                        if let Some(p) = &self.job_pause { p.store(!paused, Ordering::Relaxed); }
+                    }
                     if ui.button("Cancel").clicked() {
                         if let Some(c) = &self.job_cancel { c.store(true, Ordering::Relaxed); }
                         self.log("Cancel requested");
@@ -317,6 +352,7 @@ impl eframe::App for AppState {
                 if total > 0 && done >= total {
                     self.job_running = false;
                     self.job_cancel = None;
+                    self.job_pause = None;
                 }
             }
             ui.horizontal(|ui| {
@@ -343,6 +379,7 @@ impl eframe::App for AppState {
                             let sftp_pk = self.sftp_private_key.clone();
                             let sftp_pk_pass = self.sftp_private_key_pass.clone();
                             let sftp_host_fp = self.sftp_host_fingerprint_sha256_b64.clone();
+                            let skip_hidden_flag = self.skip_hidden;
                             let mailbox_id = if self.sftp_mailbox_id.trim().is_empty() { recipient.clone() } else { self.sftp_mailbox_id.clone() };
                             let chunk_mb_watcher = self.chunk_size_mb;
                             self.log("Watcher starting...");
@@ -357,8 +394,9 @@ impl eframe::App for AppState {
                                 while !stop_clone.load(Ordering::Relaxed) {
                                     match rx.recv_timeout(std::time::Duration::from_millis(500)) {
                                         Ok(ev) => {
-                                            for p in ev.paths {
+                        for p in ev.paths {
                                                 if p.is_file() {
+                            if skip_hidden_flag && is_hidden_path(&p) { continue; }
                                                     if let Ok(mut l) = logs.lock() { l.push(format!("Detected change: {:?}", p)); }
                                                     if backend == 0 {
                                                         let _ = storage::process_file_encrypt(&p, &folder, &recipient, sender.as_deref(), &output, (chunk_mb_watcher as usize) * 1024 * 1024, None, None);
@@ -426,12 +464,25 @@ pub fn run_gui() -> Result<()> {
         job_progress_total: None,
         job_progress_done: None,
         job_cancel: None,
-        job_running: false,
-        job_last_label: String::new(),
+    job_running: false,
+    job_last_label: String::new(),
+    job_pause: None,
     search_hash: String::new(),
     search_base: String::new(),
+        skip_hidden: true,
         ..Default::default()
     };
     let _ = eframe::run_native("n0n", options, Box::new(|_cc| Box::new(app)));
     Ok(())
+}
+
+fn is_hidden_path(p: &Path) -> bool {
+    for comp in p.components() {
+        if let std::path::Component::Normal(os) = comp {
+            if let Some(name) = os.to_str() {
+                if name.starts_with('.') { return true; }
+            }
+        }
+    }
+    false
 }
