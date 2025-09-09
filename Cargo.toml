@@ -37,6 +37,10 @@ google-cloud-auth = "0.14"
 azure_storage = "0.21"
 azure_storage_blobs = "0.21"
 azure_core = "0.21"
+reqwest-dav = "0.5"
+webdav-handler = "0.6"
+ipfs-api-backend-hyper = "0.6"
+futures-util = "0.3"
 
 [dev-dependencies]
 tempfile = "3.6"

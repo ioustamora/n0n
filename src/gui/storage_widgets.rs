@@ -1,7 +1,7 @@
 use eframe::egui;
 use std::sync::atomic::Ordering;
 use crate::gui::state::{AppState, StorageBackendConfig};
-use crate::storage::backend::{StorageType, StorageConfig, LocalConfig, SftpConfig, S3Config, GcsConfig, AzureConfig, PostgreSQLConfig, RedisConfig, CachedCloudConfigSimple};
+use crate::storage::backend::{StorageType, StorageConfig, LocalConfig, SftpConfig, S3Config, GcsConfig, AzureConfig, PostgreSQLConfig, RedisConfig, WebDavConfig, IpfsConfig, CachedCloudConfigSimple};
 use crate::storage::factory::{StorageFactory, StorageManager};
 
 impl AppState {
@@ -62,6 +62,8 @@ impl AppState {
             StorageType::AzureBlob => "Azure Blob Storage - Microsoft Azure's object storage",
             StorageType::PostgreSQL => "PostgreSQL database - stores chunks in a relational database",
             StorageType::Redis => "Redis in-memory storage - high-performance with optional TTL",
+            StorageType::WebDav => "WebDAV storage - works with Nextcloud, ownCloud, and WebDAV servers",
+            StorageType::Ipfs => "IPFS decentralized storage - content-addressed, distributed filesystem",
             StorageType::MultiCloud => "Multi-cloud replication - replicates data across multiple backends",
             StorageType::CachedCloud => "Cached cloud storage - local cache with cloud backing",
             _ => "Unknown storage backend",
@@ -83,6 +85,8 @@ impl AppState {
             StorageType::AzureBlob => self.render_azure_config(ui, config),
             StorageType::PostgreSQL => self.render_postgres_config(ui, config),
             StorageType::Redis => self.render_redis_config(ui, config),
+            StorageType::WebDav => self.render_webdav_config(ui, config),
+            StorageType::Ipfs => self.render_ipfs_config(ui, config),
             StorageType::MultiCloud => self.render_multicloud_config(ui, config),
             StorageType::CachedCloud => self.render_cached_cloud_config(ui, config),
             _ => {
@@ -331,6 +335,63 @@ impl AppState {
         });
         
         ui.label("Note: Configure individual backends above before setting up multi-cloud replication");
+    }
+    
+    /// Render WebDAV configuration
+    fn render_webdav_config(&mut self, ui: &mut egui::Ui, config: &mut StorageBackendConfig) {
+        ui.label("WebDAV Configuration");
+        
+        ui.horizontal(|ui| {
+            ui.label("WebDAV URL:");
+            ui.text_edit_singleline(&mut config.webdav_url);
+        });
+        ui.label("Example: https://cloud.example.com/remote.php/dav/files/username/");
+        
+        ui.horizontal(|ui| {
+            ui.label("Username:");
+            ui.text_edit_singleline(&mut config.webdav_username);
+        });
+        
+        ui.horizontal(|ui| {
+            ui.label("Password:");
+            ui.text_edit_singleline(&mut config.webdav_password);
+        });
+        
+        ui.horizontal(|ui| {
+            ui.label("Base Path:");
+            ui.text_edit_singleline(&mut config.webdav_base_path);
+        });
+        ui.label("Remote directory path (e.g., /n0n-storage)");
+        
+        ui.checkbox(&mut config.webdav_verify_ssl, "Verify SSL certificates");
+        
+        ui.label("Compatible with: Nextcloud, ownCloud, Apache/nginx with WebDAV");
+    }
+    
+    /// Render IPFS configuration
+    fn render_ipfs_config(&mut self, ui: &mut egui::Ui, config: &mut StorageBackendConfig) {
+        ui.label("IPFS Configuration");
+        
+        ui.horizontal(|ui| {
+            ui.label("IPFS API URL:");
+            ui.text_edit_singleline(&mut config.ipfs_api_url);
+        });
+        ui.label("Example: http://localhost:5001 (default IPFS API)");
+        
+        ui.horizontal(|ui| {
+            ui.label("Gateway URL (optional):");
+            ui.text_edit_singleline(&mut config.ipfs_gateway_url);
+        });
+        ui.label("Example: http://localhost:8080 (for HTTP access)");
+        
+        ui.checkbox(&mut config.ipfs_pin_content, "Pin content to prevent garbage collection");
+        
+        ui.separator();
+        ui.label("⚠️ IPFS Notes:");
+        ui.label("• Content is immutable and content-addressed");
+        ui.label("• Requires running IPFS daemon");
+        ui.label("• 'Deletion' unpins content (may still exist on network)");
+        ui.label("• Best for permanent, distributed storage");
     }
     
     /// Render Cached Cloud configuration
@@ -584,6 +645,22 @@ impl AppState {
                     cluster_mode: None,
                     key_prefix: if config.redis_key_prefix.is_empty() { None } else { Some(config.redis_key_prefix.clone()) },
                     ttl: if config.redis_ttl_seconds.is_empty() { None } else { config.redis_ttl_seconds.parse().ok() },
+                });
+            }
+            StorageType::WebDav => {
+                storage_config.webdav = Some(WebDavConfig {
+                    url: config.webdav_url.clone(),
+                    username: config.webdav_username.clone(),
+                    password: config.webdav_password.clone(),
+                    base_path: config.webdav_base_path.clone(),
+                    verify_ssl: Some(config.webdav_verify_ssl),
+                });
+            }
+            StorageType::Ipfs => {
+                storage_config.ipfs = Some(IpfsConfig {
+                    api_url: config.ipfs_api_url.clone(),
+                    gateway_url: if config.ipfs_gateway_url.is_empty() { None } else { Some(config.ipfs_gateway_url.clone()) },
+                    pin_content: Some(config.ipfs_pin_content),
                 });
             }
             StorageType::CachedCloud => {

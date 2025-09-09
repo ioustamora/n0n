@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use anyhow::Result;
 use crate::storage::backend::{StorageBackend, StorageConfig, StorageType, StorageError};
-use crate::storage::backends::{LocalBackend, SftpBackend, S3Backend, GcsBackend, AzureBackend, PostgreSQLBackend, RedisBackend, MultiCloudBackend, CachedCloudBackend, CachedCloudConfig, CacheEvictionPolicy, CacheWritePolicy};
+use crate::storage::backends::{LocalBackend, SftpBackend, S3Backend, GcsBackend, AzureBackend, PostgreSQLBackend, RedisBackend, WebDavBackend, IpfsBackend, MultiCloudBackend, CachedCloudBackend, CachedCloudConfig, CacheEvictionPolicy, CacheWritePolicy};
 
 /// Storage backend factory for creating storage instances
 pub struct StorageFactory;
@@ -88,25 +88,25 @@ impl StorageFactory {
             }
             
             StorageType::WebDav => {
-                let _webdav_config = config.webdav.ok_or_else(|| {
+                let webdav_config = config.webdav.ok_or_else(|| {
                     StorageError::ConfigurationError {
                         message: "WebDAV storage config is required".to_string(),
                     }
                 })?;
                 
-                // TODO: Implement WebDavBackend
-                Err(anyhow::anyhow!("WebDAV backend not yet implemented"))
+                let backend = WebDavBackend::new(webdav_config).await?;
+                Ok(Arc::new(backend))
             }
             
             StorageType::Ipfs => {
-                let _ipfs_config = config.ipfs.ok_or_else(|| {
+                let ipfs_config = config.ipfs.ok_or_else(|| {
                     StorageError::ConfigurationError {
                         message: "IPFS storage config is required".to_string(),
                     }
                 })?;
                 
-                // TODO: Implement IpfsBackend
-                Err(anyhow::anyhow!("IPFS backend not yet implemented"))
+                let backend = IpfsBackend::new(ipfs_config).await?;
+                Ok(Arc::new(backend))
             }
             
             StorageType::MultiCloud => {
@@ -238,11 +238,10 @@ impl StorageFactory {
             StorageType::AzureBlob,
             StorageType::PostgreSQL,
             StorageType::Redis,
+            StorageType::WebDav,
+            StorageType::Ipfs,
             StorageType::MultiCloud,
             StorageType::CachedCloud,
-            // Future backends:
-            // StorageType::WebDav,
-            // StorageType::Ipfs,
         ]
     }
     
@@ -301,6 +300,28 @@ impl StorageFactory {
                 })?;
                 
                 // Validate Azure config
+                Ok(())
+            }
+            
+            StorageType::WebDav => {
+                let _webdav_config = config.webdav.as_ref().ok_or_else(|| {
+                    StorageError::ConfigurationError {
+                        message: "WebDAV storage config is required".to_string(),
+                    }
+                })?;
+                
+                // Validate WebDAV config
+                Ok(())
+            }
+            
+            StorageType::Ipfs => {
+                let _ipfs_config = config.ipfs.as_ref().ok_or_else(|| {
+                    StorageError::ConfigurationError {
+                        message: "IPFS storage config is required".to_string(),
+                    }
+                })?;
+                
+                // Validate IPFS config
                 Ok(())
             }
             

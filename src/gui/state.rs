@@ -59,6 +59,18 @@ pub struct StorageBackendConfig {
     pub cache_eviction_policy: String,
     pub cache_write_policy: String,
     
+    // WebDAV config
+    pub webdav_url: String,
+    pub webdav_username: String,
+    pub webdav_password: String,
+    pub webdav_base_path: String,
+    pub webdav_verify_ssl: bool,
+    
+    // IPFS config
+    pub ipfs_api_url: String,
+    pub ipfs_gateway_url: String,
+    pub ipfs_pin_content: bool,
+    
     // MultiCloud config
     pub multicloud_primary: String,
     pub multicloud_replicas: Vec<String>,

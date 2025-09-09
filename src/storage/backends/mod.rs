@@ -5,6 +5,8 @@ pub mod gcs;
 pub mod azure;
 pub mod postgresql;
 pub mod redis;
+pub mod webdav;
+pub mod ipfs;
 pub mod multicloud;
 pub mod cached;
 
@@ -15,5 +17,7 @@ pub use gcs::GcsBackend;
 pub use azure::AzureBackend;
 pub use postgresql::PostgreSQLBackend;
 pub use redis::RedisBackend;
+pub use webdav::WebDavBackend;
+pub use ipfs::IpfsBackend;
 pub use multicloud::MultiCloudBackend;
 pub use cached::{CachedCloudBackend, CachedCloudConfig, CacheEvictionPolicy, CacheWritePolicy};
