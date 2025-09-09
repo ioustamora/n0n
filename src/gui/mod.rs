@@ -1,5 +1,6 @@
 pub mod state;
 pub mod widgets;
+pub mod storage_widgets;
 
 pub use state::AppState;
 

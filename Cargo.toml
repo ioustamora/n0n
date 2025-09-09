@@ -34,9 +34,9 @@ redis = { version = "0.26", features = ["tokio-comp", "cluster-async"] }
 url = "2.5"
 google-cloud-storage = "0.18"
 google-cloud-auth = "0.14"
-azure_storage = "0.22"
-azure_storage_blobs = "0.22"
-azure_core = "0.22"
+azure_storage = "0.21"
+azure_storage_blobs = "0.21"
+azure_core = "0.21"
 
 [dev-dependencies]
 tempfile = "3.6"
