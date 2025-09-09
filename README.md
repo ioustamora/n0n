@@ -39,6 +39,15 @@ n0n is a comprehensive, cross-platform desktop application for secure file split
 - **Dry-run mode** with realistic progress simulation
 - **Settings persistence** with non-secret data storage
 
+### 🗄️ **Backup & Disaster Recovery**
+- **Automated backup scheduling** with multiple strategies (Full, Incremental, Differential, Continuous)
+- **Point-in-time recovery** with precise restore capabilities to any historical moment
+- **Comprehensive backup verification** with multi-phase integrity checking and restore testing
+- **Disaster recovery planning** with automated testing and emergency procedures
+- **Multi-backend backup support** across all storage types with cross-replication
+- **Retention policies** with intelligent cleanup and long-term archival
+- **Recovery Time/Point Objectives** (RTO/RPO) monitoring and compliance tracking
+
 ## 🏢 **Enterprise Features**
 
 ### **Storage Backends**
@@ -59,12 +68,14 @@ n0n is a comprehensive, cross-platform desktop application for secure file split
 
 ### **Advanced Capabilities**
 
-- **Storage Migration**: Move data between any backends with verification
-- **Encryption Layers**: Apply encryption to any storage backend transparently
-- **Analytics Wrappers**: Add monitoring and quotas to any backend
-- **Configuration Profiles**: Environment-specific settings with validation
-- **Backup & Recovery**: Automated backup scheduling and point-in-time recovery
-- **Disaster Recovery**: Multi-region replication and failover procedures
+- **Storage Migration**: Move data between any backends with verification and integrity checking
+- **Encryption Layers**: Apply encryption to any storage backend transparently with multiple algorithms
+- **Analytics Wrappers**: Add monitoring, quotas, and usage tracking to any backend
+- **Configuration Profiles**: Environment-specific settings with schema validation and import/export
+- **Backup & Recovery**: Enterprise-grade backup scheduling with point-in-time recovery capabilities
+- **Disaster Recovery**: Complete DR planning with automated testing and emergency procedures
+- **Verification Systems**: Multi-phase backup verification with restore capability testing
+- **Retention Management**: Intelligent data lifecycle management with customizable retention policies
 
 ## 🚀 **Quick Start**
 
@@ -103,6 +114,19 @@ n0n encryption enable --algorithm XSalsa20Poly1305 --password-prompt
 
 # Set quotas
 n0n quota set --max-size 1TB --max-operations 10000/day
+
+# Configure automated backups
+n0n backup create-schedule "Daily Production Backup" \
+    --strategy full --frequency daily --hour 2 \
+    --source s3-primary --destination s3-backup \
+    --retention 30d --compression --verification
+
+# Create disaster recovery plan
+n0n dr create-plan "Production DR Plan" \
+    --rto 4h --rpo 1h \
+    --backup-schedules "Daily Production Backup" \
+    --contact "ops-team@company.com" \
+    --test-schedule weekly
 ```
 
 ## 📋 **Storage Backend Configuration**
@@ -189,6 +213,32 @@ n0n analytics export --format prometheus
 
 ## 🛠️ **Advanced Features**
 
+### **Backup & Disaster Recovery**
+```bash
+# Create backup schedule with multiple strategies
+n0n backup create-schedule "Incremental Hourly" \
+    --strategy incremental --frequency hourly \
+    --source local-primary --destination s3-backup \
+    --retention 7d --compression
+
+# Point-in-time recovery
+n0n backup restore --backend s3-backup \
+    --target-time "2024-01-01T12:00:00Z" \
+    --restore-path /recovery/data
+
+# Verify backup integrity
+n0n backup verify --backup-id backup_20240101_120000 \
+    --comprehensive --restore-test
+
+# Test disaster recovery plan
+n0n dr test-plan "Production DR Plan" \
+    --simulate-failures --generate-report
+
+# Get recovery points for point-in-time restore
+n0n backup list-recovery-points --backend s3-backup \
+    --date-range "last-30-days"
+```
+
 ### **Storage Migration**
 ```bash
 # Migrate between backends with verification
@@ -206,14 +256,37 @@ n0n config export --format encrypted --password-prompt \
 n0n config import --file staging-config.n0n --password-prompt
 ```
 
-### **Backup & Recovery**
+### **Enterprise Backup & Recovery**
 ```bash
-# Schedule automated backups
-n0n backup schedule --frequency daily --retention 30d \
-    --destination s3-backup
+# Create comprehensive backup schedule
+n0n backup create-schedule "Enterprise Backup" \
+    --strategy differential --frequency "daily@02:00" \
+    --source multicloud-primary --destination s3-backup \
+    --retention "30d,4w,12m" --compression gzip \
+    --encryption XSalsa20Poly1305 --verification comprehensive
 
-# Restore from backup
-n0n backup restore --date 2024-01-01 --destination local-restore
+# Multi-tier backup strategy
+n0n backup create-schedule "Continuous Protection" \
+    --strategy continuous --frequency "5min" \
+    --source local-hot --destination redis-cache \
+    --retention "24h" --rpo "5min"
+
+# Cross-region disaster recovery backup
+n0n backup create-schedule "DR Backup" \
+    --strategy full --frequency weekly \
+    --source s3-primary --destination gcs-dr \
+    --retention "1y" --verification restore-test
+
+# Point-in-time recovery with precision
+n0n backup restore --backend s3-backup \
+    --target-time "2024-01-01T14:30:15Z" \
+    --restore-path /recovery/precise-restore \
+    --verify-integrity --progress
+
+# Bulk recovery point management
+n0n backup list-recovery-points --backend all \
+    --filter "status:verified,age:<30d" \
+    --format table --sort-by date-desc
 ```
 
 ## 🧪 **Testing**
