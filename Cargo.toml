@@ -42,6 +42,7 @@ reqwest_dav = "0.2"
 ipfs-api-backend-hyper = "0.6"
 futures-util = "0.3"
 flate2 = "1.0"
+reqwest = { version = "0.11", features = ["json"] }
 
 [dev-dependencies]
 tempfile = "3.6"

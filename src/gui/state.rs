@@ -269,6 +269,7 @@ impl eframe::App for AppState {
             self.render_keypair_section(ui);
             self.render_storage_backend_section(ui);
             self.render_encryption_section(ui);
+            self.render_analytics_section(ui);
             self.render_sftp_section(ui);
             self.render_progress_section(ui);
             self.render_logs_section(ui);

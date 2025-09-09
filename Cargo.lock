@@ -4021,6 +4021,7 @@ dependencies = [
  "rand 0.8.5",
  "rayon",
  "redis",
+ "reqwest 0.11.27",
  "reqwest_dav",
  "rfd",
  "serde",
