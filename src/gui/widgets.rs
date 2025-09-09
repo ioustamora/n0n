@@ -2,6 +2,7 @@ use eframe::egui;
 use std::sync::atomic::Ordering;
 use base64::Engine;
 use crate::gui::state::AppState;
+use crate::gui::backup_widgets;
 use crate::{storage, crypto};
 
 impl AppState {
@@ -96,5 +97,16 @@ impl AppState {
                 }
             }
         });
+    }
+
+    pub fn render_backup_section(&mut self, ui: &mut egui::Ui) {
+        // Initialize backup state if not already done
+        if self.backup_state.is_none() {
+            self.backup_state = Some(backup_widgets::BackupWidgetState::new());
+        }
+
+        if let Some(backup_state) = &mut self.backup_state {
+            backup_widgets::render_backup_section(ui, backup_state);
+        }
     }
 }
