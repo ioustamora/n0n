@@ -3,6 +3,7 @@ use anyhow::Result;
 use crate::storage::backend::{StorageBackend, StorageConfig, StorageType, StorageError};
 use crate::storage::backends::{LocalBackend, SftpBackend, S3Backend, GcsBackend, AzureBackend, PostgreSQLBackend, RedisBackend, WebDavBackend, IpfsBackend, MultiCloudBackend, CachedCloudBackend, CachedCloudConfig, CacheEvictionPolicy, CacheWritePolicy};
 use crate::storage::encryption::{EncryptedStorageBackend, EncryptionConfig, EncryptionError};
+use crate::storage::analytics::{AnalyticsStorageBackend, QuotaConfig};
 
 /// Storage backend factory for creating storage instances
 pub struct StorageFactory;
@@ -255,6 +256,42 @@ impl StorageFactory {
         let encrypted_backend = EncryptedStorageBackend::new(base_backend, encryption_config)
             .map_err(|e| StorageError::EncryptionFailed(e.to_string()))?;
         Ok(Arc::new(encrypted_backend))
+    }
+    
+    /// Create an analytics-enabled storage backend wrapper around any backend
+    pub async fn create_analytics_backend(
+        config: StorageConfig,
+        quota_config: QuotaConfig,
+        stats_file_path: Option<String>
+    ) -> Result<Arc<dyn StorageBackend>> {
+        let base_backend = Self::create_backend(config).await?;
+        let analytics_backend = AnalyticsStorageBackend::new(base_backend, quota_config, stats_file_path);
+        Ok(Arc::new(analytics_backend))
+    }
+    
+    /// Create a fully featured backend with both encryption and analytics
+    pub async fn create_enhanced_backend(
+        config: StorageConfig,
+        encryption_config: Option<EncryptionConfig>,
+        quota_config: Option<QuotaConfig>,
+        stats_file_path: Option<String>
+    ) -> Result<Arc<dyn StorageBackend>> {
+        let mut backend = Self::create_backend(config).await?;
+        
+        // Add encryption layer if requested
+        if let Some(enc_config) = encryption_config {
+            let encrypted_backend = EncryptedStorageBackend::new(backend, enc_config)
+                .map_err(|e| StorageError::EncryptionFailed(e.to_string()))?;
+            backend = Arc::new(encrypted_backend);
+        }
+        
+        // Add analytics layer if requested
+        if let Some(quota_config) = quota_config {
+            let analytics_backend = AnalyticsStorageBackend::new(backend, quota_config, stats_file_path);
+            backend = Arc::new(analytics_backend);
+        }
+        
+        Ok(backend)
     }
     
     /// Validate a storage configuration without creating the backend

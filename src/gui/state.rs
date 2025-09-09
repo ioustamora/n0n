@@ -82,6 +82,17 @@ pub struct StorageBackendConfig {
     pub encryption_algorithm: String, // "None", "XSalsa20Poly1305", "ChaCha20Poly1305", "AES256GCM"
     pub encryption_password: String,
     pub encryption_compress: bool,
+    
+    // Analytics and quota config
+    pub analytics_enabled: bool,
+    pub quota_enabled: bool,
+    pub quota_max_size_mb: u64,
+    pub quota_max_chunks: u64,
+    pub quota_max_daily_ops: u64,
+    pub quota_max_hourly_ops: u64,
+    pub quota_max_chunk_size_mb: u64,
+    pub quota_enforce_hard_limits: bool,
+    pub stats_retention_days: u32,
 }
 
 #[derive(Default)]

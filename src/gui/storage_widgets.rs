@@ -767,4 +767,106 @@ impl AppState {
             })
             .collect()
     }
+    
+    /// Render analytics and quota configuration
+    pub fn render_analytics_section(&mut self, ui: &mut egui::Ui) {
+        ui.group(|ui| {
+            ui.heading("Analytics & Quotas");
+            
+            let current_config = self.storage_configs
+                .entry(self.storage_backend_type)
+                .or_insert_with(StorageBackendConfig::default);
+            
+            // Analytics
+            ui.horizontal(|ui| {
+                ui.checkbox(&mut current_config.analytics_enabled, "Enable storage analytics");
+                ui.label("Track usage statistics and generate reports");
+            });
+            
+            if current_config.analytics_enabled {
+                ui.horizontal(|ui| {
+                    ui.label("Statistics retention (days):");
+                    ui.add(egui::DragValue::new(&mut current_config.stats_retention_days).range(1..=365));
+                });
+            }
+            
+            ui.separator();
+            
+            // Quotas
+            ui.horizontal(|ui| {
+                ui.checkbox(&mut current_config.quota_enabled, "Enable storage quotas");
+                ui.label("Set limits on storage usage");
+            });
+            
+            if current_config.quota_enabled {
+                ui.group(|ui| {
+                    ui.label("Quota Configuration");
+                    
+                    ui.horizontal(|ui| {
+                        ui.label("Max total size (MB):");
+                        ui.add(egui::DragValue::new(&mut current_config.quota_max_size_mb).range(1..=1_000_000));
+                    });
+                    
+                    ui.horizontal(|ui| {
+                        ui.label("Max total chunks:");
+                        ui.add(egui::DragValue::new(&mut current_config.quota_max_chunks).range(1..=10_000_000));
+                    });
+                    
+                    ui.horizontal(|ui| {
+                        ui.label("Max chunk size (MB):");
+                        ui.add(egui::DragValue::new(&mut current_config.quota_max_chunk_size_mb).range(1..=1000));
+                    });
+                    
+                    ui.separator();
+                    
+                    ui.horizontal(|ui| {
+                        ui.label("Max daily operations:");
+                        ui.add(egui::DragValue::new(&mut current_config.quota_max_daily_ops).range(1..=100_000));
+                    });
+                    
+                    ui.horizontal(|ui| {
+                        ui.label("Max hourly operations:");
+                        ui.add(egui::DragValue::new(&mut current_config.quota_max_hourly_ops).range(1..=10_000));
+                    });
+                    
+                    ui.separator();
+                    
+                    ui.horizontal(|ui| {
+                        ui.checkbox(&mut current_config.quota_enforce_hard_limits, "Enforce hard limits");
+                        ui.label("If disabled, only show warnings when limits are exceeded");
+                    });
+                });
+                
+                // Quota status display (if we have a backend instance)
+                if let Some(ref storage_manager) = self.storage_manager {
+                    if let Some(backend) = storage_manager.get_primary_backend() {
+                        ui.separator();
+                        ui.collapsing("Current Usage", |ui| {
+                            // This would need to be async, so for now just show placeholder
+                            ui.label("Usage statistics would be displayed here");
+                            ui.label("(Requires async UI updates)");
+                        });
+                    }
+                }
+            }
+            
+            // Analytics reports
+            if current_config.analytics_enabled {
+                ui.separator();
+                ui.horizontal(|ui| {
+                    if ui.button("Generate Usage Report").clicked() {
+                        self.log("Usage report generation not yet implemented");
+                    }
+                    
+                    if ui.button("Reset Statistics").clicked() {
+                        self.log("Statistics reset not yet implemented");
+                    }
+                    
+                    if ui.button("Export Statistics").clicked() {
+                        self.log("Statistics export not yet implemented");
+                    }
+                });
+            }
+        });
+    }
 }
