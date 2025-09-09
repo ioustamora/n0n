@@ -1,6 +1,8 @@
 pub mod state;
 pub mod widgets;
 pub mod storage_widgets;
+pub mod migration_widgets;
+pub mod config_widgets;
 
 pub use state::AppState;
 

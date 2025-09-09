@@ -139,6 +139,8 @@ pub struct AppState {
     pub watcher_debounce_ms: u64,
     // estimation
     pub estimated_total_chunks: Option<Arc<AtomicUsize>>,
+    // configuration management
+    pub config_state: Option<crate::gui::config_widgets::ConfigManagementState>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -228,6 +230,7 @@ impl AppState {
         app.chunk_size_mb = 10;
         app.watcher_debounce_ms = 1000;
         app.storage_backend_type = StorageType::Local;
+        app.config_state = None; // Will be initialized on first use
         
         // Initialize default storage configs
         app.storage_configs.insert(StorageType::Local, StorageBackendConfig::default());
@@ -270,6 +273,7 @@ impl eframe::App for AppState {
             self.render_storage_backend_section(ui);
             self.render_encryption_section(ui);
             self.render_analytics_section(ui);
+            self.render_config_management_section(ui);
             self.render_sftp_section(ui);
             self.render_progress_section(ui);
             self.render_logs_section(ui);
