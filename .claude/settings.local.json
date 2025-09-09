@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cargo --version)",
+      "Bash(rustc --version)",
+      "Bash(cargo test:*)",
+      "Bash(cargo check:*)",
+      "Bash(find:*)",
+      "Bash(cargo clippy:*)",
+      "Bash(cargo audit:*)",
+      "Bash(cargo:*)",
+      "Bash(timeout 30 cargo check --message-format=short)",
+      "Bash(rustc:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

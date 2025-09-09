@@ -24,6 +24,19 @@ futures = "0.3"
 rfd = "0.14"
 anyhow = "1.0"
 walkdir = "2.3"
+async-trait = "0.1"
+chrono = { version = "0.4", features = ["serde"] }
+thiserror = "1.0"
+aws-config = "1.0"
+aws-sdk-s3 = "1.0"
+sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "chrono", "json"] }
+redis = { version = "0.26", features = ["tokio-comp", "cluster-async"] }
+url = "2.5"
+google-cloud-storage = "0.18"
+google-cloud-auth = "0.14"
+azure_storage = "0.22"
+azure_storage_blobs = "0.22"
+azure_core = "0.22"
 
 [dev-dependencies]
 tempfile = "3.6"

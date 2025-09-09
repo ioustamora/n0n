@@ -9,8 +9,7 @@ mod watcher;
 mod search;
 mod gui;
 
-fn main() -> Result<()> {
+fn main() -> Result<(), eframe::Error> {
     env_logger::init();
-    gui::run_gui()?;
-    Ok(())
+    gui::run_app()
 }

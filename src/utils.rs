@@ -53,6 +53,6 @@ pub fn parse_key_hex_or_b64(s: &str) -> Result<Vec<u8>> {
 /// Always returns at least 1.
 pub fn estimate_chunks(file_size_bytes: usize, chunk_bytes: usize) -> usize {
 	if chunk_bytes == 0 { return 1; }
-	let chunks = (file_size_bytes + chunk_bytes - 1) / chunk_bytes;
+	let chunks = file_size_bytes.div_ceil(chunk_bytes);
 	chunks.max(1)
 }
