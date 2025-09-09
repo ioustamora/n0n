@@ -95,6 +95,7 @@ pub struct StorageConfig {
     pub webdav: Option<WebDavConfig>,
     pub ipfs: Option<IpfsConfig>,
     pub replication: Option<ReplicationConfig>,
+    pub cached_cloud: Option<CachedCloudConfigSimple>,
 }
 
 /// Local filesystem storage configuration
@@ -208,6 +209,25 @@ pub enum ReplicationStrategy {
     AsyncReplication,
     SyncReplication,
     QuorumWrite,
+}
+
+/// Cached cloud storage configuration (simplified for serialization)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CachedCloudConfigSimple {
+    /// The backend type to use for cloud storage
+    pub cloud_backend_type: StorageType,
+    /// Local cache directory
+    pub cache_dir: String,
+    /// Maximum cache size in bytes (0 = unlimited)
+    pub max_cache_size: u64,
+    /// Cache eviction policy: "lru", "lfu", "fifo", "ttl_only"
+    pub eviction_policy: String,
+    /// Write policy: "write_through", "write_back", "write_around"
+    pub write_policy: String,
+    /// How long to keep items in cache without access (in seconds)
+    pub ttl_seconds: Option<u64>,
+    /// Whether to preload frequently accessed items
+    pub enable_prefetch: bool,
 }
 
 /// Errors specific to storage operations

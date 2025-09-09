@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use anyhow::Result;
 use crate::storage::backend::{StorageBackend, StorageConfig, StorageType, StorageError};
-use crate::storage::backends::{LocalBackend, SftpBackend, S3Backend, GcsBackend, PostgreSQLBackend, RedisBackend, MultiCloudBackend};
+use crate::storage::backends::{LocalBackend, SftpBackend, S3Backend, GcsBackend, AzureBackend, PostgreSQLBackend, RedisBackend, MultiCloudBackend, CachedCloudBackend, CachedCloudConfig, CacheEvictionPolicy, CacheWritePolicy};
 
 /// Storage backend factory for creating storage instances
 pub struct StorageFactory;
@@ -55,14 +55,14 @@ impl StorageFactory {
             }
             
             StorageType::AzureBlob => {
-                let _azure_config = config.azure.ok_or_else(|| {
+                let azure_config = config.azure.ok_or_else(|| {
                     StorageError::ConfigurationError {
                         message: "Azure Blob storage config is required".to_string(),
                     }
                 })?;
                 
-                // TODO: Implement AzureBackend
-                Err(anyhow::anyhow!("Azure Blob backend not yet implemented"))
+                let backend = AzureBackend::new(azure_config).await?;
+                Ok(Arc::new(backend))
             }
             
             StorageType::PostgreSQL => {
@@ -151,6 +151,14 @@ impl StorageFactory {
                     });
                 }
                 
+                if let Some(azure_config) = config.azure {
+                    all_configs.insert(StorageType::AzureBlob, StorageConfig { 
+                        backend_type: StorageType::AzureBlob, 
+                        azure: Some(azure_config),
+                        ..Default::default() 
+                    });
+                }
+                
                 if let Some(pg_config) = config.postgresql {
                     all_configs.insert(StorageType::PostgreSQL, StorageConfig { 
                         backend_type: StorageType::PostgreSQL, 
@@ -172,8 +180,50 @@ impl StorageFactory {
             }
             
             StorageType::CachedCloud => {
-                // TODO: Implement CachedCloudBackend
-                Err(anyhow::anyhow!("CachedCloud backend not yet implemented"))
+                let cached_config = config.cached_cloud.ok_or_else(|| {
+                    StorageError::ConfigurationError {
+                        message: "Cached cloud storage config is required".to_string(),
+                    }
+                })?;
+                
+                // Parse eviction policy
+                let eviction_policy = match cached_config.eviction_policy.as_str() {
+                    "lru" => CacheEvictionPolicy::Lru,
+                    "lfu" => CacheEvictionPolicy::Lfu,
+                    "fifo" => CacheEvictionPolicy::Fifo,
+                    "ttl_only" => CacheEvictionPolicy::TtlOnly,
+                    _ => return Err(StorageError::ConfigurationError {
+                        message: format!("Invalid eviction policy: {}", cached_config.eviction_policy),
+                    }.into()),
+                };
+                
+                // Parse write policy
+                let write_policy = match cached_config.write_policy.as_str() {
+                    "write_through" => CacheWritePolicy::WriteThrough,
+                    "write_back" => CacheWritePolicy::WriteBack,
+                    "write_around" => CacheWritePolicy::WriteAround,
+                    _ => return Err(StorageError::ConfigurationError {
+                        message: format!("Invalid write policy: {}", cached_config.write_policy),
+                    }.into()),
+                };
+                
+                // Create cloud backend configuration
+                let mut cloud_config = config.clone();
+                cloud_config.backend_type = cached_config.cloud_backend_type;
+                cloud_config.cached_cloud = None; // Prevent recursion
+                
+                let cached_cloud_config = CachedCloudConfig {
+                    cloud_config,
+                    cache_dir: cached_config.cache_dir,
+                    max_cache_size: cached_config.max_cache_size,
+                    eviction_policy,
+                    write_policy,
+                    ttl_seconds: cached_config.ttl_seconds,
+                    enable_prefetch: cached_config.enable_prefetch,
+                };
+                
+                let backend = CachedCloudBackend::new(cached_cloud_config).await?;
+                Ok(Arc::new(backend))
             }
         }
     }
@@ -185,14 +235,14 @@ impl StorageFactory {
             StorageType::Sftp,
             StorageType::S3Compatible,
             StorageType::GoogleCloud,
+            StorageType::AzureBlob,
             StorageType::PostgreSQL,
             StorageType::Redis,
             StorageType::MultiCloud,
+            StorageType::CachedCloud,
             // Future backends:
-            // StorageType::AzureBlob,
             // StorageType::WebDav,
             // StorageType::Ipfs,
-            // StorageType::CachedCloud,
         ]
     }
     
@@ -240,6 +290,28 @@ impl StorageFactory {
                 })?;
                 
                 // Validate GCS config
+                Ok(())
+            }
+            
+            StorageType::AzureBlob => {
+                let _azure_config = config.azure.as_ref().ok_or_else(|| {
+                    StorageError::ConfigurationError {
+                        message: "Azure Blob storage config is required".to_string(),
+                    }
+                })?;
+                
+                // Validate Azure config
+                Ok(())
+            }
+            
+            StorageType::CachedCloud => {
+                let _cached_config = config.cached_cloud.as_ref().ok_or_else(|| {
+                    StorageError::ConfigurationError {
+                        message: "Cached cloud storage config is required".to_string(),
+                    }
+                })?;
+                
+                // Validate cached cloud config
                 Ok(())
             }
             
