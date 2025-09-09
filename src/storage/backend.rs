@@ -259,4 +259,16 @@ pub enum StorageError {
     
     #[error("Backend-specific error: {message}")]
     BackendError { message: String },
+    
+    #[error("Encryption failed: {0}")]
+    EncryptionFailed(String),
+    
+    #[error("Decryption failed: {0}")]
+    DecryptionFailed(String),
+    
+    #[error("Serialization failed: {0}")]
+    SerializationFailed(String),
+    
+    #[error("Deserialization failed: {0}")]
+    DeserializationFailed(String),
 }

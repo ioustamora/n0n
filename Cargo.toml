@@ -41,6 +41,7 @@ reqwest-dav = "0.5"
 webdav-handler = "0.6"
 ipfs-api-backend-hyper = "0.6"
 futures-util = "0.3"
+flate2 = "1.0"
 
 [dev-dependencies]
 tempfile = "3.6"

@@ -4,6 +4,7 @@ pub mod encryption;
 pub mod backend;
 pub mod factory;
 pub mod backends;
+pub mod migration;
 
 // Re-export main functions for backward compatibility
 pub use local::*;
