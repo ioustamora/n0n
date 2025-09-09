@@ -689,4 +689,82 @@ impl AppState {
         
         storage_config
     }
+    
+    /// Render encryption at rest configuration
+    pub fn render_encryption_section(&mut self, ui: &mut egui::Ui) {
+        ui.group(|ui| {
+            ui.heading("Encryption at Rest");
+            
+            let current_config = self.storage_configs
+                .entry(self.storage_backend_type)
+                .or_insert_with(StorageBackendConfig::default);
+            
+            ui.horizontal(|ui| {
+                ui.checkbox(&mut current_config.encryption_enabled, "Enable encryption at rest");
+                ui.label("Encrypt all data before storing to the backend");
+            });
+            
+            if current_config.encryption_enabled {
+                ui.separator();
+                
+                // Algorithm selection
+                ui.horizontal(|ui| {
+                    ui.label("Encryption Algorithm:");
+                    egui::ComboBox::from_label("")
+                        .selected_text(&current_config.encryption_algorithm)
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(&mut current_config.encryption_algorithm, 
+                                "XSalsa20Poly1305".to_string(), "XSalsa20Poly1305 (recommended)");
+                            ui.selectable_value(&mut current_config.encryption_algorithm, 
+                                "ChaCha20Poly1305".to_string(), "ChaCha20Poly1305 (future)");
+                            ui.selectable_value(&mut current_config.encryption_algorithm, 
+                                "AES256GCM".to_string(), "AES256GCM (future)");
+                        });
+                });
+                
+                // Password
+                ui.horizontal(|ui| {
+                    ui.label("Encryption Password:");
+                    ui.add(egui::TextEdit::singleline(&mut current_config.encryption_password)
+                        .password(true));
+                });
+                
+                if current_config.encryption_password.len() < 8 {
+                    ui.colored_label(egui::Color32::RED, "⚠ Password should be at least 8 characters");
+                }
+                
+                // Compression
+                ui.horizontal(|ui| {
+                    ui.checkbox(&mut current_config.encryption_compress, "Compress before encrypt");
+                    ui.label("Can reduce storage size but increases CPU usage");
+                });
+                
+                // Security warning
+                ui.separator();
+                ui.colored_label(egui::Color32::YELLOW, 
+                    "⚠ Security Notice: Passwords are stored in settings. Use a dedicated encryption key for production.");
+                
+                // Key generation helper
+                ui.horizontal(|ui| {
+                    if ui.button("Generate Strong Password").clicked() {
+                        current_config.encryption_password = self.generate_strong_password();
+                    }
+                    ui.label("Generates a 32-character random password");
+                });
+            }
+        });
+    }
+    
+    /// Generate a strong random password for encryption
+    fn generate_strong_password(&self) -> String {
+        use rand::Rng;
+        const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*";
+        let mut rng = rand::thread_rng();
+        (0..32)
+            .map(|_| {
+                let idx = rng.gen_range(0..CHARSET.len());
+                CHARSET[idx] as char
+            })
+            .collect()
+    }
 }

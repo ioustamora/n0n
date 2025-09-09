@@ -11,7 +11,9 @@
       "Bash(cargo:*)",
       "Bash(timeout 30 cargo check --message-format=short)",
       "Bash(rustc:*)",
-      "Bash(timeout 60 cargo check --lib --message-format=short)"
+      "Bash(timeout 60 cargo check --lib --message-format=short)",
+      "Bash(timeout 60 cargo check --message-format=short)",
+      "Bash(timeout 90 cargo check --lib --message-format=short)"
     ],
     "deny": [],
     "ask": []

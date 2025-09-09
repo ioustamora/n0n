@@ -76,6 +76,12 @@ pub struct StorageBackendConfig {
     pub multicloud_replicas: Vec<String>,
     pub multicloud_consistency: String,
     pub multicloud_strategy: String,
+    
+    // Encryption at rest config
+    pub encryption_enabled: bool,
+    pub encryption_algorithm: String, // "None", "XSalsa20Poly1305", "ChaCha20Poly1305", "AES256GCM"
+    pub encryption_password: String,
+    pub encryption_compress: bool,
 }
 
 #[derive(Default)]
@@ -250,7 +256,8 @@ impl eframe::App for AppState {
             
             // Render different sections
             self.render_keypair_section(ui);
-            self.render_storage_backend_section(ui);  
+            self.render_storage_backend_section(ui);
+            self.render_encryption_section(ui);
             self.render_sftp_section(ui);
             self.render_progress_section(ui);
             self.render_logs_section(ui);

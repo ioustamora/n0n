@@ -2,6 +2,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use crate::storage::backend::{StorageBackend, StorageConfig, StorageType, StorageError};
 use crate::storage::backends::{LocalBackend, SftpBackend, S3Backend, GcsBackend, AzureBackend, PostgreSQLBackend, RedisBackend, WebDavBackend, IpfsBackend, MultiCloudBackend, CachedCloudBackend, CachedCloudConfig, CacheEvictionPolicy, CacheWritePolicy};
+use crate::storage::encryption::{EncryptedStorageBackend, EncryptionConfig, EncryptionError};
 
 /// Storage backend factory for creating storage instances
 pub struct StorageFactory;
@@ -243,6 +244,17 @@ impl StorageFactory {
             StorageType::MultiCloud,
             StorageType::CachedCloud,
         ]
+    }
+    
+    /// Create an encrypted storage backend wrapper around any backend
+    pub async fn create_encrypted_backend(
+        config: StorageConfig, 
+        encryption_config: EncryptionConfig
+    ) -> Result<Arc<dyn StorageBackend>> {
+        let base_backend = Self::create_backend(config).await?;
+        let encrypted_backend = EncryptedStorageBackend::new(base_backend, encryption_config)
+            .map_err(|e| StorageError::EncryptionFailed(e.to_string()))?;
+        Ok(Arc::new(encrypted_backend))
     }
     
     /// Validate a storage configuration without creating the backend
