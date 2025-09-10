@@ -7,6 +7,7 @@ pub mod watcher;
 pub mod search;
 pub mod gui;
 pub mod config;
+pub mod monitoring;
 
 // Re-export common types if needed
 pub use model::*;
