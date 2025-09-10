@@ -289,6 +289,49 @@ n0n backup list-recovery-points --backend all \
     --format table --sort-by date-desc
 ```
 
+### **Disaster Recovery & Business Continuity**
+```bash
+# Create enterprise disaster recovery plan
+n0n dr create-plan "Production DR Plan" \
+    --name "Critical System Recovery" \
+    --rto "4h" --rpo "1h" \
+    --backup-schedules "Enterprise Backup,DR Backup" \
+    --contacts "ops-team@company.com,cto@company.com" \
+    --test-schedule "monthly"
+
+# Add recovery procedures to DR plan
+n0n dr add-procedure "Production DR Plan" \
+    --step 1 --title "Verify Backup Integrity" \
+    --description "Validate latest backup before restore" \
+    --duration "15min" --automation-script "verify_backups.sh"
+
+n0n dr add-procedure "Production DR Plan" \
+    --step 2 --title "Provision DR Infrastructure" \
+    --description "Spin up disaster recovery environment" \
+    --duration "30min" --resources "compute:8vcpu,storage:1TB"
+
+# Test disaster recovery plan
+n0n dr test-plan "Production DR Plan" \
+    --simulate-failures --dry-run \
+    --report-format "detailed" --export "dr-test-report.pdf"
+
+# Execute disaster recovery (emergency use)
+n0n dr execute-plan "Production DR Plan" \
+    --incident-id "INC-2024-001" \
+    --restore-target "/dr/recovery-site" \
+    --notify-contacts --monitor-progress
+
+# Monitor DR plan readiness
+n0n dr status --plan "Production DR Plan" \
+    --show-metrics --backup-health --test-history
+
+# Generate compliance reports
+n0n dr compliance-report --plan "Production DR Plan" \
+    --standards "SOC2,ISO27001" \
+    --period "last-quarter" \
+    --export "compliance-report.json"
+```
+
 ## 🧪 **Testing**
 
 ### **Unit Tests**
@@ -308,6 +351,24 @@ export N0N_SFTP_PASSWORD=testpass
 cargo test --features sftp-tests sftp_integration
 ```
 
+### **Backup & DR Tests**
+```bash
+# Test backup functionality
+cargo test --features backup-tests backup_integration
+
+# Test disaster recovery procedures
+cargo test --features dr-tests disaster_recovery
+
+# Test point-in-time recovery
+cargo test --features recovery-tests point_in_time_recovery
+
+# Test backup verification systems
+cargo test --features verification-tests backup_verification
+
+# End-to-end backup and restore tests
+cargo test --release --features e2e-tests backup_restore_e2e
+```
+
 ### **Benchmark Tests**
 ```bash
 # Performance benchmarks
@@ -315,6 +376,9 @@ cargo bench
 
 # Storage backend performance
 cargo test --release --features benchmark-tests storage_performance
+
+# Backup performance benchmarks
+cargo bench --features backup-bench backup_performance
 ```
 
 ## 🏗️ **Architecture**
@@ -325,6 +389,8 @@ cargo test --release --features benchmark-tests storage_performance
 │            GUI Layer                │
 ├─────────────────────────────────────┤
 │      Configuration Management       │
+├─────────────────────────────────────┤
+│   Backup & Disaster Recovery Layer  │
 ├─────────────────────────────────────┤
 │    Analytics & Monitoring Layer     │
 ├─────────────────────────────────────┤
@@ -339,17 +405,25 @@ cargo test --release --features benchmark-tests storage_performance
 ### **Key Components**
 - **Storage Factory**: Creates and manages backend instances
 - **Migration Manager**: Handles data movement between backends
+- **Backup Manager**: Orchestrates backup scheduling, execution, and verification
+- **Disaster Recovery Engine**: Manages DR plans, testing, and execution
 - **Analytics Manager**: Tracks usage and enforces quotas
 - **Configuration Manager**: Manages profiles and environments
 - **Encryption Manager**: Handles encryption at rest
+- **Verification Engine**: Performs multi-phase backup integrity checking
+- **Recovery Engine**: Handles point-in-time recovery and restore operations
 
 ## 📚 **Documentation**
 
 - **[Configuration Guide](docs/configuration.md)** - Complete configuration reference
 - **[Storage Backends](docs/storage-backends.md)** - Backend-specific documentation
+- **[Backup & Recovery Guide](docs/backup-recovery.md)** - Enterprise backup and disaster recovery
+- **[Point-in-Time Recovery](docs/point-in-time-recovery.md)** - Detailed recovery procedures
+- **[Disaster Recovery Planning](docs/disaster-recovery.md)** - DR planning and testing
 - **[Security Guide](docs/security.md)** - Security best practices
 - **[API Reference](docs/api.md)** - Developer API documentation
 - **[Deployment Guide](docs/deployment.md)** - Production deployment
+- **[Compliance Guide](docs/compliance.md)** - SOC2, ISO27001, and regulatory compliance
 
 ## 🤝 **Contributing**
 
@@ -380,4 +454,4 @@ This project is licensed under the terms specified in the [LICENSE](LICENSE) fil
 
 ---
 
-**n0n** - Enterprise-grade secure file sharing with multi-cloud storage, advanced encryption, and comprehensive management tools.
+**n0n** - Enterprise-grade secure file sharing with multi-cloud storage, advanced encryption, comprehensive backup & disaster recovery, and enterprise management tools for mission-critical data protection.
