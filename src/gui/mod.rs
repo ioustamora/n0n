@@ -6,6 +6,7 @@ pub mod config_widgets;
 pub mod backup_widgets;
 pub mod crypto_widgets;
 pub mod monitoring_widgets;
+pub mod access_control_widgets;
 
 pub use state::AppState;
 

@@ -8,6 +8,7 @@ pub mod search;
 pub mod gui;
 pub mod config;
 pub mod monitoring;
+pub mod access_control;
 
 // Re-export common types if needed
 pub use model::*;
