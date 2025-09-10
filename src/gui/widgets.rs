@@ -109,4 +109,40 @@ impl AppState {
             backup_widgets::render_backup_section(ui, backup_state);
         }
     }
+
+    pub fn render_crypto_management_section(&mut self, ui: &mut egui::Ui) {
+        ui.group(|ui| {
+            ui.label("🔐 Enterprise Cryptographic Management");
+            ui.separator();
+            
+            ui.horizontal(|ui| {
+                if ui.selectable_label(true, "🔑 Key Management").clicked() {
+                    // Key management tab is selected by default
+                }
+                ui.separator();
+                if ui.selectable_label(false, "📜 Certificate Management").clicked() {
+                    // Switch to certificate management tab
+                }
+                ui.separator();
+                if ui.selectable_label(false, "🧮 Advanced Crypto Operations").clicked() {
+                    // Switch to advanced crypto operations tab
+                }
+            });
+            
+            ui.separator();
+            
+            // For now, show all tabs in a collapsing header format
+            ui.collapsing("🔑 Key Management", |ui| {
+                self.key_management_widget.ui(ui);
+            });
+            
+            ui.collapsing("📜 Certificate Management", |ui| {
+                self.certificate_management_widget.ui(ui);
+            });
+            
+            ui.collapsing("🧮 Advanced Crypto Operations", |ui| {
+                self.advanced_crypto_widget.ui(ui);
+            });
+        });
+    }
 }

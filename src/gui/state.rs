@@ -143,6 +143,10 @@ pub struct AppState {
     pub config_state: Option<crate::gui::config_widgets::ConfigManagementState>,
     // backup management
     pub backup_state: Option<crate::gui::backup_widgets::BackupWidgetState>,
+    // crypto management
+    pub key_management_widget: crate::gui::crypto_widgets::KeyManagementWidget,
+    pub certificate_management_widget: crate::gui::crypto_widgets::CertificateManagementWidget,
+    pub advanced_crypto_widget: crate::gui::crypto_widgets::AdvancedCryptoWidget,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -234,6 +238,9 @@ impl AppState {
         app.storage_backend_type = StorageType::Local;
         app.config_state = None; // Will be initialized on first use
         app.backup_state = None; // Will be initialized on first use
+        app.key_management_widget = crate::gui::crypto_widgets::KeyManagementWidget::default();
+        app.certificate_management_widget = crate::gui::crypto_widgets::CertificateManagementWidget::default();
+        app.advanced_crypto_widget = crate::gui::crypto_widgets::AdvancedCryptoWidget::default();
         
         // Initialize default storage configs
         app.storage_configs.insert(StorageType::Local, StorageBackendConfig::default());
@@ -278,6 +285,7 @@ impl eframe::App for AppState {
             self.render_analytics_section(ui);
             self.render_config_management_section(ui);
             self.render_backup_section(ui);
+            self.render_crypto_management_section(ui);
             self.render_sftp_section(ui);
             self.render_progress_section(ui);
             self.render_logs_section(ui);

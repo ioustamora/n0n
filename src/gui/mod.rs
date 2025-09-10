@@ -4,6 +4,7 @@ pub mod storage_widgets;
 pub mod migration_widgets;
 pub mod config_widgets;
 pub mod backup_widgets;
+pub mod crypto_widgets;
 
 pub use state::AppState;
 
