@@ -1,4 +1,5 @@
 pub mod state;
+pub mod state_manager;
 pub mod widgets;
 pub mod storage_widgets;
 pub mod migration_widgets;
@@ -7,8 +8,18 @@ pub mod backup_widgets;
 pub mod crypto_widgets;
 pub mod monitoring_widgets;
 pub mod access_control_widgets;
+pub mod drag_drop;
 
 pub use state::AppState;
+
+// Re-export enhanced state management
+pub use state_manager::{
+    StateManager, StateMessage, StateChange, 
+    GuiState, FileOperationsState, StorageState, 
+    ConfigUIState, MigrationState, MonitoringState,
+    ProgressState, ConnectionStatus, MigrationStatus,
+    AlertNotification, AlertLevel
+};
 
 use eframe::egui;
 use std::path::PathBuf;

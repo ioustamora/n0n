@@ -2,6 +2,14 @@
 name = "n0n"
 version = "0.1.0"
 edition = "2021"
+authors = ["n0n Team"]
+description = "Secure file synchronization and storage solution with enterprise-grade features"
+readme = "README.md"
+repository = "https://github.com/user/n0n"
+license = "MIT OR Apache-2.0"
+keywords = ["security", "synchronization", "storage", "encryption", "backup"]
+categories = ["cryptography", "filesystem", "network-programming", "command-line-utilities"]
+documentation = "https://docs.rs/n0n"
 
 [dependencies]
 # dryoc replaced with explicit primitives for compatibility
@@ -66,11 +74,29 @@ digest = "0.10"
 hmac = "0.12"
 zeroize = { version = "1.7", features = ["zeroize_derive"] }
 parking_lot = "0.12"
+# Advanced logging and tracing
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["json", "fmt", "std", "env-filter"] }
+tracing-appender = "0.2"
 
 [dev-dependencies]
 tempfile = "3.6"
+proptest = "1.4"
+criterion = { version = "0.5", features = ["html_reports"] }
 
 [features]
 default = []
 # Enable SFTP integration tests (requires env vars and a reachable server)
 sftp-tests = []
+
+[[bench]]
+name = "crypto_benchmarks"
+harness = false
+
+[[bench]]
+name = "chunk_benchmarks"
+harness = false
+
+[[bench]]
+name = "utils_benchmarks"
+harness = false

@@ -402,19 +402,19 @@ impl StorageBackend for AnalyticsStorageBackend {
         result
     }
     
-    async fn chunk_exists(&self, chunk_hash: &str) -> Result<bool, StorageError> {
-        self.backend.chunk_exists(chunk_hash).await
+    async fn chunk_exists(&self, recipient: &str, chunk_hash: &str) -> Result<bool> {
+        self.backend.chunk_exists(recipient, chunk_hash).await
     }
     
-    async fn delete_chunk(&self, chunk_hash: &str) -> Result<(), StorageError> {
+    async fn delete_chunk(&self, recipient: &str, chunk_hash: &str) -> Result<()> {
         // Get chunk size before deletion for accurate statistics
-        let chunk_size = if let Ok(data) = self.backend.load_chunk(chunk_hash).await {
+        let chunk_size = if let Ok(data) = self.backend.load_chunk(recipient, chunk_hash).await {
             Some(data.len() as u64)
         } else {
             None
         };
         
-        let result = self.backend.delete_chunk(chunk_hash).await;
+        let result = self.backend.delete_chunk(recipient, chunk_hash).await;
         
         // Record successful deletion
         if result.is_ok() {
@@ -437,11 +437,11 @@ impl StorageBackend for AnalyticsStorageBackend {
         self.backend.list_chunks().await
     }
     
-    async fn list_metadata(&self) -> Result<Vec<String>, StorageError> {
-        self.backend.list_metadata().await
+    async fn list_metadata(&self, recipient: &str) -> Result<Vec<(String, ChunkMetadata)>> {
+        self.backend.list_metadata(recipient).await
     }
     
-    async fn get_storage_info(&self) -> Result<HashMap<String, String>, StorageError> {
+    async fn get_storage_info(&self) -> Result<HashMap<String, String>> {
         let mut info = self.backend.get_storage_info().await?;
         let stats = self.usage_stats.read().await;
         let quota = self.quota_config.read().await;
@@ -467,7 +467,7 @@ impl StorageBackend for AnalyticsStorageBackend {
         Ok(info)
     }
     
-    async fn cleanup(&self) -> Result<(), StorageError> {
+    async fn cleanup(&self) -> Result<u64> {
         self.backend.cleanup().await
     }
     

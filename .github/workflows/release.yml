@@ -1,0 +1,339 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  create-release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+      version: ${{ steps.get_version.outputs.version }}
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Get version from tag
+      id: get_version
+      run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref }}
+        release_name: Release ${{ steps.get_version.outputs.version }}
+        body: |
+          ## Release Notes for ${{ steps.get_version.outputs.version }}
+          
+          ### Features
+          - Add new features here
+          
+          ### Bug Fixes
+          - Add bug fixes here
+          
+          ### Security
+          - Add security updates here
+          
+          ### Performance
+          - Add performance improvements here
+          
+          ### Breaking Changes
+          - Add breaking changes here
+          
+          For a complete list of changes, see the [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md).
+        draft: false
+        prerelease: ${{ contains(steps.get_version.outputs.version, 'alpha') || contains(steps.get_version.outputs.version, 'beta') || contains(steps.get_version.outputs.version, 'rc') }}
+
+  build-release:
+    name: Build Release
+    needs: create-release
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        build:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            name: n0n-linux-amd64
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+            name: n0n-linux-amd64-musl
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            name: n0n-linux-arm64
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            name: n0n-windows-amd64.exe
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            name: n0n-macos-amd64
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            name: n0n-macos-arm64
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: ${{ matrix.build.target }}
+
+    - name: Install system dependencies (Ubuntu)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y pkg-config libssl-dev
+        if [[ "${{ matrix.build.target }}" == "x86_64-unknown-linux-musl" ]]; then
+          sudo apt-get install -y musl-tools
+        fi
+        if [[ "${{ matrix.build.target }}" == "aarch64-unknown-linux-gnu" ]]; then
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+        fi
+
+    - name: Install system dependencies (macOS)
+      if: matrix.os == 'macos-latest'
+      run: |
+        brew install openssl
+        echo 'export PATH="/usr/local/opt/openssl/bin:$PATH"' >> $GITHUB_ENV
+
+    - name: Cache cargo registry
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-${{ matrix.build.target }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Configure cross-compilation
+      if: matrix.build.target == 'aarch64-unknown-linux-gnu'
+      run: |
+        echo '[target.aarch64-unknown-linux-gnu]' >> ~/.cargo/config.toml
+        echo 'linker = "aarch64-linux-gnu-gcc"' >> ~/.cargo/config.toml
+
+    - name: Build release binary
+      run: cargo build --release --target ${{ matrix.build.target }} --all-features
+      env:
+        OPENSSL_STATIC: ${{ matrix.build.target == 'x86_64-unknown-linux-musl' && '1' || '0' }}
+
+    - name: Create archive (Unix)
+      if: matrix.os != 'windows-latest'
+      run: |
+        cd target/${{ matrix.build.target }}/release
+        tar czf ../../../${{ matrix.build.name }}.tar.gz n0n
+        cd ../../..
+
+    - name: Create archive (Windows)
+      if: matrix.os == 'windows-latest'
+      run: |
+        cd target/${{ matrix.build.target }}/release
+        7z a ../../../${{ matrix.build.name }}.zip n0n.exe
+        cd ../../..
+
+    - name: Upload Release Asset (Unix)
+      if: matrix.os != 'windows-latest'
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ needs.create-release.outputs.upload_url }}
+        asset_path: ./${{ matrix.build.name }}.tar.gz
+        asset_name: ${{ matrix.build.name }}.tar.gz
+        asset_content_type: application/gzip
+
+    - name: Upload Release Asset (Windows)
+      if: matrix.os == 'windows-latest'
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ needs.create-release.outputs.upload_url }}
+        asset_path: ./${{ matrix.build.name }}.zip
+        asset_name: ${{ matrix.build.name }}.zip
+        asset_content_type: application/zip
+
+  build-docker:
+    name: Build and Push Docker Image
+    needs: create-release
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Login to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+    - name: Login to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: |
+          your-dockerhub-username/n0n
+          ghcr.io/${{ github.repository }}
+        tags: |
+          type=ref,event=tag
+          type=semver,pattern={{version}}
+          type=semver,pattern={{major}}.{{minor}}
+          type=semver,pattern={{major}}
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        platforms: linux/amd64,linux/arm64
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+  publish-crate:
+    name: Publish to crates.io
+    needs: [create-release, build-release]
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y pkg-config libssl-dev
+
+    - name: Cache cargo registry
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-publish-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Verify package
+      run: cargo package --verbose
+
+    - name: Publish to crates.io
+      run: cargo publish --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+  update-homebrew:
+    name: Update Homebrew Formula
+    needs: [create-release, build-release]
+    runs-on: ubuntu-latest
+    if: "!contains(needs.create-release.outputs.version, 'alpha') && !contains(needs.create-release.outputs.version, 'beta') && !contains(needs.create-release.outputs.version, 'rc')"
+    steps:
+    - name: Update Homebrew formula
+      uses: dawidd6/action-homebrew-bump-formula@v3
+      with:
+        token: ${{ secrets.HOMEBREW_TOKEN }}
+        formula: n0n
+        tag: ${{ github.ref }}
+        revision: ${{ github.sha }}
+
+  security-scan:
+    name: Security Scan
+    needs: create-release
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'fs'
+        scan-ref: '.'
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+
+    - name: Upload Trivy scan results to GitHub Security tab
+      uses: github/codeql-action/upload-sarif@v3
+      if: always()
+      with:
+        sarif_file: 'trivy-results.sarif'
+
+  post-release:
+    name: Post-Release Tasks
+    needs: [build-release, publish-crate]
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Create GitHub issue for next release
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const version = '${{ needs.create-release.outputs.version }}';
+          const nextVersion = version.replace(/(\d+)$/, (match, p1) => String(parseInt(p1) + 1));
+          
+          await github.rest.issues.create({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            title: `Plan for next release v${nextVersion}`,
+            body: `
+              ## Release Planning for v${nextVersion}
+              
+              This issue tracks the planning for the next release.
+              
+              ### Proposed Features
+              - [ ] Feature 1
+              - [ ] Feature 2
+              
+              ### Bug Fixes
+              - [ ] Bug fix 1
+              - [ ] Bug fix 2
+              
+              ### Performance Improvements
+              - [ ] Performance improvement 1
+              
+              ### Security Updates
+              - [ ] Security update 1
+              
+              ### Documentation
+              - [ ] Documentation update 1
+              
+              ### Dependencies
+              - [ ] Update dependency 1
+              
+              ### Testing
+              - [ ] Add tests for feature 1
+              
+              Please add items to this checklist as needed.
+            `,
+            labels: ['release-planning', 'enhancement']
+          });
+
+    - name: Send release notification
+      if: "!contains(needs.create-release.outputs.version, 'alpha') && !contains(needs.create-release.outputs.version, 'beta') && !contains(needs.create-release.outputs.version, 'rc')"
+      run: |
+        echo "🎉 Release ${{ needs.create-release.outputs.version }} has been published!"
+        echo "📦 Binaries: https://github.com/${{ github.repository }}/releases/tag/v${{ needs.create-release.outputs.version }}"
+        echo "📚 Documentation: https://docs.rs/n0n/${{ needs.create-release.outputs.version }}"
+        # Add webhook notification to Slack/Discord if needed
+        # curl -X POST -H 'Content-type: application/json' --data '{"text":"New release published!"}' ${{ secrets.SLACK_WEBHOOK_URL }}

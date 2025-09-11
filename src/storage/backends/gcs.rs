@@ -12,6 +12,7 @@ use google_cloud_storage::http::objects::{
     Object,
 };
 use google_cloud_auth::credentials::CredentialsFile;
+use serde_json;
 
 use crate::storage::backend::{StorageBackend, StorageType, ChunkMetadata, GcsConfig, StorageError};
 
@@ -42,7 +43,7 @@ impl GcsBackend {
         // Setup authentication
         let client_config = if let Some(service_account_key) = &config.service_account_key {
             // Use service account key directly
-            let credentials = CredentialsFile::from_json(service_account_key)
+            let credentials: CredentialsFile = serde_json::from_str(service_account_key)
                 .map_err(|e| StorageError::AuthenticationError {
                     message: format!("Invalid service account key: {}", e),
                 })?;
@@ -238,11 +239,11 @@ impl StorageBackend for GcsBackend {
 
         match self.client.list_objects(&request).await {
             Ok(list_response) => {
-                let mut chunk_hashes = Vec::new();
+                let mut chunk_hashes: Vec<String> = Vec::new();
                 
                 if let Some(objects) = list_response.items {
                     for object in objects {
-                        if let Some(name) = object.name {
+                        if let Some(name) = &object.name {
                             // Extract chunk hash from object name
                             // Format: {prefix}/chunks/{recipient}/{chunk_hash}
                             if let Some(hash) = name.strip_prefix(&prefix) {

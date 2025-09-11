@@ -13,7 +13,14 @@
       "Bash(rustc:*)",
       "Bash(timeout 60 cargo check --lib --message-format=short)",
       "Bash(timeout 60 cargo check --message-format=short)",
-      "Bash(timeout 90 cargo check --lib --message-format=short)"
+      "Bash(timeout 90 cargo check --lib --message-format=short)",
+      "Bash(rm:*)",
+      "Bash(timeout 15 cargo check --message-format=short)",
+      "Bash(timeout 10 cargo check --message-format=short)",
+      "Bash(timeout 15 cargo clippy --message-format=short)",
+      "Bash(timeout 10 cargo clippy -- --allow warnings)",
+      "Bash(timeout 20 cargo clippy -- -W clippy::too-many-arguments)",
+      "Bash(timeout 30 cargo test --test unit_utils_tests --lib)"
     ],
     "deny": [],
     "ask": []

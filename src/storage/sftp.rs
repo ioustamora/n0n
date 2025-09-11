@@ -1,16 +1,12 @@
 use anyhow::{Result, anyhow};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
-use std::sync::atomic::{AtomicUsize, AtomicBool, Ordering};
+use std::sync::atomic::{AtomicUsize, AtomicBool};
 use std::io::{Read, Write};
 use std::net::TcpStream;
 use ssh2::Session;
-use crate::chunk;
-use crate::model::ChunkMeta;
-use crate::crypto;
-use base64::{engine::general_purpose, Engine as _};
-use serde_json;
-use rand::RngCore;
+// Removed unused imports: chunk, ChunkMeta, crypto
+// Removed unused imports: base64, serde_json, rand
 
 /// Connect to SFTP server with password authentication
 pub fn sftp_connect(host: &str, username: &str, password: &str) -> Result<(ssh2::Sftp, Session, TcpStream)> {

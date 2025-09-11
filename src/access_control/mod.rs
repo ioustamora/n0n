@@ -29,7 +29,7 @@ pub use rbac::{
 
 pub use abac::{
     AttributeBasedAccessControl, Attribute, AttributeSet, AccessRequest,
-    AccessDecision, ABACConfig, ABACError
+    AccessDecision, ABACConfig, ABACError, ABACPolicy
 };
 
 pub use policies::{
@@ -49,7 +49,7 @@ pub use sessions::{
 
 pub use audit::{
     AuditLogger, AuditEvent, AuditEventType, AuditQuery,
-    AuditConfig, AuditError
+    AuditConfig, AuditError, AuditResult
 };
 
 /// Unified access control service providing all security capabilities

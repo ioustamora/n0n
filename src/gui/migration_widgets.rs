@@ -114,17 +114,17 @@ impl AppState {
                     ui.selectable_value(&mut migration_state.migration_strategy, "Synchronize".to_string(), "Synchronize");
                     ui.selectable_value(&mut migration_state.migration_strategy, "VerifyOnly".to_string(), "Verify Only");
                 });
+            
+            // Show strategy description
+            let strategy_description = match migration_state.migration_strategy.as_str() {
+                "CopyThenDelete" => "Copy all data to destination, then optionally delete from source",
+                "StreamingMigration" => "Copy data and immediately delete from source (saves space)",
+                "Synchronize" => "Bidirectional synchronization between backends",
+                "VerifyOnly" => "Verify data integrity without copying",
+                _ => "Unknown strategy",
+            };
+            ui.label(egui::RichText::new(strategy_description).italics().small());
         });
-        
-        // Show strategy description
-        let strategy_description = match migration_state.migration_strategy.as_str() {
-            "CopyThenDelete" => "Copy all data to destination, then optionally delete from source",
-            "StreamingMigration" => "Copy data and immediately delete from source (saves space)",
-            "Synchronize" => "Bidirectional synchronization between backends",
-            "VerifyOnly" => "Verify data integrity without copying",
-            _ => "Unknown strategy",
-        };
-        ui.label(egui::RichText::new(strategy_description).italics().small());
         
         // Advanced options
         ui.collapsing("Advanced Options", |ui| {

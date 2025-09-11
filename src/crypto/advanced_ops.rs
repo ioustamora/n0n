@@ -5,11 +5,9 @@ use tokio::sync::RwLock;
 use chrono::{DateTime, Utc, Duration};
 use thiserror::Error;
 use uuid::Uuid;
-use base64::{Engine, engine::general_purpose};
 use sha2::{Sha256, Digest};
-
-use crate::crypto::key_management::{KeyManagementSystem, KeyManagementError, EncryptionAlgorithm, KeyAlgorithm};
-use crate::crypto::certificates::{CertificateManager, Certificate, CertificateError};
+use crate::crypto::key_management::{KeyManagementSystem, KeyManagementError};
+use crate::crypto::certificates::{CertificateManager, CertificateError};
 
 /// Advanced cryptographic operations system
 pub struct AdvancedCryptoOps {
@@ -70,9 +68,31 @@ pub enum CryptoOperationError {
     SerializationError(#[from] serde_json::Error),
 }
 
+/// Key derivation function types
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum KeyDerivationFunction {
+    PBKDF2,
+    Scrypt,
+    Argon2,
+    HKDF,
+    BcryptPbkdf,
+}
+
+/// Authenticated encryption types
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum AuthenticatedEncryption {
+    AesGcm,
+    ChaCha20Poly1305,
+    XSalsa20Poly1305,
+    AesCcm,
+}
+
+/// Advanced crypto operation errors
+pub type AdvancedCryptoError = CryptoOperationError;
+
 /// Cached cryptographic operation result
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct CachedOperation {
+pub struct CachedOperation {
     operation_id: String,
     operation_type: CryptoOperationType,
     result_data: Vec<u8>,

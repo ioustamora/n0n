@@ -2,7 +2,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use crate::storage::backend::{StorageBackend, StorageConfig, StorageType, StorageError};
 use crate::storage::backends::{LocalBackend, SftpBackend, S3Backend, GcsBackend, AzureBackend, PostgreSQLBackend, RedisBackend, WebDavBackend, IpfsBackend, MultiCloudBackend, CachedCloudBackend, CachedCloudConfig, CacheEvictionPolicy, CacheWritePolicy};
-use crate::storage::encryption::{EncryptedStorageBackend, EncryptionConfig, EncryptionError};
+use crate::storage::encryption::{EncryptedStorageBackend, EncryptionConfig};
 use crate::storage::analytics::{AnalyticsStorageBackend, QuotaConfig};
 
 /// Storage backend factory for creating storage instances

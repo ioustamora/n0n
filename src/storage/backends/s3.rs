@@ -3,7 +3,8 @@ use anyhow::{Result, anyhow};
 use std::collections::HashMap;
 use aws_config::{BehaviorVersion, Region};
 use aws_sdk_s3::{Client, Error as S3Error};
-use aws_sdk_s3::types::{ByteStream, ObjectCannedAcl};
+use aws_sdk_s3::primitives::{ByteStream};
+use aws_sdk_s3::types::{ObjectCannedAcl};
 use aws_sdk_s3::primitives::ByteStreamError;
 use chrono::{DateTime, Utc};
 
@@ -88,17 +89,19 @@ impl S3Backend {
     }
     
     /// Convert S3 error to our storage error
-    fn map_s3_error(err: S3Error) -> StorageError {
-        match err {
-            S3Error::NoSuchBucket(_) => StorageError::ConfigurationError {
+    fn map_s3_error(err: &str) -> StorageError {
+        if err.contains("NoSuchBucket") {
+            StorageError::ConfigurationError {
                 message: "S3 bucket does not exist".to_string(),
-            },
-            S3Error::NoSuchKey(_) => StorageError::ChunkNotFound {
+            }
+        } else if err.contains("NoSuchKey") || err.contains("NotFound") {
+            StorageError::ChunkNotFound {
                 chunk_hash: "unknown".to_string(),
-            },
-            _ => StorageError::BackendError {
+            }
+        } else {
+            StorageError::BackendError {
                 message: format!("S3 operation failed: {}", err),
-            },
+            }
         }
     }
     
@@ -110,8 +113,7 @@ impl S3Backend {
             .await {
             Ok(_) => Ok(()),
             Err(e) => {
-                let s3_error = e.into_service_error();
-                Err(Self::map_s3_error(s3_error).into())
+                Err(Self::map_s3_error(&e.to_string()).into())
             }
         }
     }
@@ -134,8 +136,7 @@ impl StorageBackend for S3Backend {
             .await {
             Ok(_) => Ok(chunk_hash.to_string()),
             Err(e) => {
-                let s3_error = e.into_service_error();
-                Err(Self::map_s3_error(s3_error).into())
+                Err(Self::map_s3_error(&e.to_string()).into())
             }
         }
     }
@@ -164,8 +165,7 @@ impl StorageBackend for S3Backend {
             .await {
             Ok(_) => Ok(()),
             Err(e) => {
-                let s3_error = e.into_service_error();
-                Err(Self::map_s3_error(s3_error).into())
+                Err(Self::map_s3_error(&e.to_string()).into())
             }
         }
     }
@@ -185,12 +185,13 @@ impl StorageBackend for S3Backend {
                 Ok(body.into_bytes().to_vec())
             },
             Err(e) => {
-                let s3_error = e.into_service_error();
-                match s3_error {
-                    S3Error::NoSuchKey(_) => Err(StorageError::ChunkNotFound {
+                let error_str = e.to_string();
+                if error_str.contains("NoSuchKey") || error_str.contains("NotFound") {
+                    Err(StorageError::ChunkNotFound {
                         chunk_hash: chunk_hash.to_string(),
-                    }.into()),
-                    _ => Err(Self::map_s3_error(s3_error).into()),
+                    }.into())
+                } else {
+                    Err(Self::map_s3_error(&error_str).into())
                 }
             }
         }
@@ -217,7 +218,8 @@ impl StorageBackend for S3Backend {
                 } else {
                     // Fallback to S3 object last modified time if available
                     if let Some(last_modified) = response.last_modified {
-                        last_modified.into()
+                        // Convert AWS SDK DateTime to chrono DateTime
+                        DateTime::from_timestamp(last_modified.secs(), 0).unwrap_or_else(|| Utc::now())
                     } else {
                         Utc::now()
                     }
@@ -231,12 +233,13 @@ impl StorageBackend for S3Backend {
                 })
             },
             Err(e) => {
-                let s3_error = e.into_service_error();
-                match s3_error {
-                    S3Error::NoSuchKey(_) => Err(StorageError::ChunkNotFound {
+                let error_str = e.to_string();
+                if error_str.contains("NoSuchKey") || error_str.contains("NotFound") {
+                    Err(StorageError::ChunkNotFound {
                         chunk_hash: chunk_hash.to_string(),
-                    }.into()),
-                    _ => Err(Self::map_s3_error(s3_error).into()),
+                    }.into())
+                } else {
+                    Err(Self::map_s3_error(&error_str).into())
                 }
             }
         }
@@ -286,8 +289,7 @@ impl StorageBackend for S3Backend {
                     }
                 },
                 Err(e) => {
-                    let s3_error = e.into_service_error();
-                    return Err(Self::map_s3_error(s3_error).into());
+                    return Err(Self::map_s3_error(&e.to_string()).into());
                 }
             }
         }

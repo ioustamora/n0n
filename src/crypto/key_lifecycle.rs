@@ -8,8 +8,8 @@ use uuid::Uuid;
 use tokio::time::Interval;
 
 use crate::crypto::key_management::{
-    KeyManagementSystem, KeyPolicy, KeyStatus, KeyAlgorithm, 
-    KeyRotationResult, KeyManagementError, MasterKey
+    KeyManagementSystem, KeyStatus, 
+    KeyRotationResult, KeyManagementError
 };
 
 /// Key lifecycle management system
@@ -95,6 +95,17 @@ pub struct ExpirationConfig {
     pub auto_renew: bool,
     pub renew_before_expiry: Duration,
     pub hard_expiry: bool,
+}
+
+/// Key lifecycle state
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum LifecycleState {
+    Created,
+    Active,
+    Deprecated,
+    Revoked,
+    Destroyed,
+    Archived,
 }
 
 /// Key deprecation configuration
@@ -259,7 +270,7 @@ pub struct LifecycleEvent {
 }
 
 /// Rotation scheduler
-struct RotationScheduler {
+pub struct RotationScheduler {
     scheduled_rotations: HashMap<String, ScheduledRotation>,
     scheduler_interval: Interval,
     running: bool,

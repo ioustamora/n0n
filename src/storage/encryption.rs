@@ -5,16 +5,16 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use thiserror::Error;
 
-use crate::storage::backend::{StorageBackend, ChunkMetadata, StorageError};
+use crate::storage::backend::{StorageBackend, ChunkMetadata, StorageError, StorageType};
 
 // Legacy encryption functions (preserved for backward compatibility)
-use crate::utils::{create_dir_if_not_exists, write_bytes_to_file};
+use crate::utils::write_bytes_to_file;
 use anyhow::Result;
 use std::path::Path;
 use std::sync::{Arc as LegacyArc, Mutex};
 use std::sync::atomic::{AtomicUsize, AtomicBool, Ordering};
 use crate::chunk;
-use crate::model::ChunkMeta;
+// Removed unused import: ChunkMeta
 use crate::crypto;
 use crate::storage::local::{ensure_mailbox_local, save_chunk_local};
 use base64::{engine::general_purpose, Engine as _};
@@ -223,29 +223,29 @@ impl EncryptedStorageBackend {
 
 #[async_trait]
 impl StorageBackend for EncryptedStorageBackend {
-    async fn save_chunk(&self, chunk_hash: &str, data: Vec<u8>) -> Result<(), StorageError> {
-        let encrypted_data = self.encryption_manager.encrypt(&data)
+    async fn save_chunk(&self, recipient: &str, chunk_hash: &str, data: &[u8]) -> Result<String> {
+        let encrypted_data = self.encryption_manager.encrypt(data)
             .map_err(|e| StorageError::EncryptionFailed(e.to_string()))?;
         
-        self.backend.save_chunk(chunk_hash, encrypted_data).await
+        self.backend.save_chunk(recipient, chunk_hash, &encrypted_data).await
     }
     
-    async fn load_chunk(&self, chunk_hash: &str) -> Result<Vec<u8>, StorageError> {
-        let encrypted_data = self.backend.load_chunk(chunk_hash).await?;
+    async fn load_chunk(&self, recipient: &str, chunk_hash: &str) -> Result<Vec<u8>> {
+        let encrypted_data = self.backend.load_chunk(recipient, chunk_hash).await?;
         
-        self.encryption_manager.decrypt(&encrypted_data)
-            .map_err(|e| StorageError::DecryptionFailed(e.to_string()))
+        Ok(self.encryption_manager.decrypt(&encrypted_data)
+            .map_err(|e| StorageError::DecryptionFailed(e.to_string()))?)
     }
     
-    async fn chunk_exists(&self, chunk_hash: &str) -> Result<bool, StorageError> {
-        self.backend.chunk_exists(chunk_hash).await
+    async fn chunk_exists(&self, recipient: &str, chunk_hash: &str) -> Result<bool> {
+        self.backend.chunk_exists(recipient, chunk_hash).await
     }
     
-    async fn delete_chunk(&self, chunk_hash: &str) -> Result<(), StorageError> {
-        self.backend.delete_chunk(chunk_hash).await
+    async fn delete_chunk(&self, recipient: &str, chunk_hash: &str) -> Result<()> {
+        self.backend.delete_chunk(recipient, chunk_hash).await
     }
     
-    async fn save_metadata(&self, file_hash: &str, metadata: ChunkMetadata) -> Result<(), StorageError> {
+    async fn save_metadata(&self, recipient: &str, chunk_hash: &str, metadata: &ChunkMetadata) -> Result<()> {
         // Encrypt metadata as well
         let metadata_json = serde_json::to_vec(&metadata)
             .map_err(|e| StorageError::SerializationFailed(e.to_string()))?;
@@ -255,7 +255,7 @@ impl StorageBackend for EncryptedStorageBackend {
         
         // Create a wrapper metadata object with encrypted content
         let encrypted_metadata_obj = ChunkMetadata {
-            file_hash: file_hash.to_string(),
+            file_hash: chunk_hash.to_string(),
             chunk_hashes: vec![], // Empty, actual data is in encrypted_content
             chunk_size: encrypted_metadata.len(),
             total_size: metadata.total_size,
@@ -272,11 +272,11 @@ impl StorageBackend for EncryptedStorageBackend {
             },
         };
         
-        self.backend.save_metadata(file_hash, encrypted_metadata_obj).await
+        self.backend.save_metadata(recipient, chunk_hash, &encrypted_metadata_obj).await
     }
     
-    async fn load_metadata(&self, file_hash: &str) -> Result<ChunkMetadata, StorageError> {
-        let encrypted_metadata_obj = self.backend.load_metadata(file_hash).await?;
+    async fn load_metadata(&self, recipient: &str, chunk_hash: &str) -> Result<ChunkMetadata> {
+        let encrypted_metadata_obj = self.backend.load_metadata(recipient, chunk_hash).await?;
         
         // Extract encrypted content from custom metadata
         let encrypted_content_b64 = encrypted_metadata_obj.custom_metadata
@@ -295,15 +295,15 @@ impl StorageBackend for EncryptedStorageBackend {
         Ok(metadata)
     }
     
-    async fn list_chunks(&self) -> Result<Vec<String>, StorageError> {
-        self.backend.list_chunks().await
+    async fn list_chunks(&self, recipient: &str) -> Result<Vec<String>> {
+        self.backend.list_chunks(recipient).await
     }
     
-    async fn list_metadata(&self) -> Result<Vec<String>, StorageError> {
-        self.backend.list_metadata().await
+    async fn list_metadata(&self, recipient: &str) -> Result<Vec<(String, ChunkMetadata)>> {
+        self.backend.list_metadata(recipient).await
     }
     
-    async fn get_storage_info(&self) -> Result<HashMap<String, String>, StorageError> {
+    async fn get_storage_info(&self) -> Result<HashMap<String, String>> {
         let mut info = self.backend.get_storage_info().await?;
         info.insert("encryption_enabled".to_string(), "true".to_string());
         info.insert("encryption_algorithm".to_string(), format!("{:?}", self.encryption_manager.config.algorithm));
@@ -311,14 +311,22 @@ impl StorageBackend for EncryptedStorageBackend {
         Ok(info)
     }
     
-    async fn cleanup(&self) -> Result<(), StorageError> {
+    async fn cleanup(&self) -> Result<u64> {
         self.backend.cleanup().await
     }
     
-    async fn health_check(&self) -> Result<HashMap<String, String>, StorageError> {
+    async fn health_check(&self) -> Result<HashMap<String, String>> {
         let mut health = self.backend.health_check().await?;
         health.insert("encryption_status".to_string(), "healthy".to_string());
         Ok(health)
+    }
+
+    async fn test_connection(&self) -> Result<()> {
+        self.backend.test_connection().await
+    }
+
+    fn backend_type(&self) -> StorageType {
+        self.backend.backend_type()
     }
 }
 

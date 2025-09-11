@@ -5,8 +5,8 @@ use tokio::sync::RwLock;
 use chrono::{DateTime, Utc, Duration};
 use thiserror::Error;
 use uuid::Uuid;
-use base64::{Engine, engine::general_purpose};
-use sha2::{Sha256, Digest};
+// base64 and sha2 imports removed as unused
+// KeyUsage import removed as unused
 
 /// Key management system for enterprise encryption
 pub struct KeyManagementSystem {
@@ -102,6 +102,21 @@ pub struct KeyEncryptionKey {
     pub created_at: DateTime<Utc>,
     pub status: KeyStatus,
     pub wrapped_keys: Vec<String>,
+}
+
+/// Compliance frameworks supported
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum ComplianceFramework {
+    Fips1402Level1,
+    Fips1402Level2,
+    Fips1402Level3,
+    Fips1402Level4,
+    CommonCriteria,
+    Iso27001,
+    Sox,
+    Hipaa,
+    PciDss,
+    Gdpr,
 }
 
 /// Key usage policy

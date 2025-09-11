@@ -1,7 +1,8 @@
 use async_trait::async_trait;
 use anyhow::{Result, anyhow};
 use std::collections::HashMap;
-use redis::{Client, Connection, AsyncCommands, RedisError, aio::ConnectionManager};
+use redis::{Client, Connection, AsyncCommands, RedisError};
+use redis::aio::MultiplexedConnection as ConnectionManager;
 use chrono::{DateTime, Utc};
 
 use crate::storage::backend::{StorageBackend, StorageType, ChunkMetadata, RedisConfig, StorageError};

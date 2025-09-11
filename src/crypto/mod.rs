@@ -8,7 +8,6 @@
 //! - Advanced cryptographic operations (ZKP, homomorphic encryption, MPC)
 
 use std::sync::Arc;
-use tokio::sync::RwLock;
 
 pub mod key_management;
 pub mod hsm;
@@ -19,18 +18,20 @@ pub mod legacy;
 
 pub use key_management::{
     KeyManagementSystem, KeyManagementError, MasterKey, DataEncryptionKey, KeyEncryptionKey,
-    KeyPolicy, KeyAlgorithm, KeyUsage, ComplianceFramework, KeyStoreConfig
+    KeyPolicy, KeyAlgorithm, ComplianceFramework, KeyStoreConfig, HsmProvider
 };
 
+pub use certificates::{KeyUsage};
+
 pub use hsm::{
-    HsmProvider, HsmProviderFactory, HsmConfig, HsmError,
+    HsmProviderFactory, HsmError,
     AwsCloudHsmProvider, AzureDedicatedHsmProvider, SafeNetLunaProvider,
     SoftHsmProvider, MockHsmProvider
 };
 
 pub use key_lifecycle::{
     KeyLifecycleManager, LifecyclePolicy, LifecycleState, RotationScheduler,
-    LifecycleEvent, LifecycleConfig, NotificationSettings
+    LifecycleEvent, LifecycleConfig, NotificationConfig
 };
 
 pub use certificates::{
@@ -165,7 +166,7 @@ mod tests {
             default_key_lifetime: std::time::Duration::from_secs(86400 * 365), // 1 year
             rotation_check_interval: std::time::Duration::from_secs(3600), // 1 hour
             compliance_check_interval: std::time::Duration::from_secs(86400), // 1 day
-            notification_settings: NotificationSettings {
+            notification_settings: NotificationConfig {
                 email_notifications: true,
                 webhook_url: None,
                 slack_webhook: None,
@@ -229,7 +230,7 @@ mod tests {
             default_key_lifetime: std::time::Duration::from_secs(3600),
             rotation_check_interval: std::time::Duration::from_secs(60),
             compliance_check_interval: std::time::Duration::from_secs(300),
-            notification_settings: NotificationSettings {
+            notification_settings: NotificationConfig {
                 email_notifications: false,
                 webhook_url: None,
                 slack_webhook: None,

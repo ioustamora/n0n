@@ -20,6 +20,27 @@ pub enum StorageType {
     CachedCloud,
 }
 
+impl std::str::FromStr for StorageType {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "local" => Ok(StorageType::Local),
+            "sftp" => Ok(StorageType::Sftp),
+            "s3" | "s3compatible" | "s3-compatible" => Ok(StorageType::S3Compatible),
+            "gcs" | "googlecloud" | "google-cloud" => Ok(StorageType::GoogleCloud),
+            "azure" | "azureblob" | "azure-blob" => Ok(StorageType::AzureBlob),
+            "postgresql" | "postgres" | "pg" => Ok(StorageType::PostgreSQL),
+            "redis" => Ok(StorageType::Redis),
+            "webdav" | "dav" => Ok(StorageType::WebDav),
+            "ipfs" => Ok(StorageType::Ipfs),
+            "multicloud" | "multi-cloud" => Ok(StorageType::MultiCloud),
+            "cached" | "cachedcloud" | "cached-cloud" => Ok(StorageType::CachedCloud),
+            _ => Err(format!("Unknown storage type: {}", s)),
+        }
+    }
+}
+
 /// Metadata for a stored chunk
 #[derive(Debug, Clone)]
 pub struct ChunkMetadata {
@@ -78,6 +99,36 @@ pub trait StorageBackend: Send + Sync {
         let mut health = HashMap::new();
         health.insert("status".to_string(), "unknown".to_string());
         Ok(health)
+    }
+    
+    /// Check if a chunk exists
+    async fn chunk_exists(&self, recipient: &str, chunk_hash: &str) -> Result<bool> {
+        match self.load_chunk(recipient, chunk_hash).await {
+            Ok(_) => Ok(true),
+            Err(_) => Ok(false),
+        }
+    }
+    
+    /// List metadata for all chunks
+    async fn list_metadata(&self, recipient: &str) -> Result<Vec<(String, ChunkMetadata)>> {
+        let chunks = self.list_chunks(recipient).await?;
+        let mut results = Vec::new();
+        for chunk_hash in chunks {
+            if let Ok(metadata) = self.load_metadata(recipient, &chunk_hash).await {
+                results.push((chunk_hash, metadata));
+            }
+        }
+        Ok(results)
+    }
+    
+    /// Get storage backend information/statistics
+    async fn get_storage_info(&self) -> Result<HashMap<String, String>> {
+        Ok(self.get_info())
+    }
+    
+    /// Cleanup old/expired data
+    async fn cleanup(&self) -> Result<u64> {
+        Ok(0) // Default: no cleanup performed
     }
 }
 
