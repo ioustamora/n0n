@@ -537,6 +537,8 @@ impl KeyLifecycleManager {
         let total_keys = self.kms.list_master_keys().await?.len();
         let compliant_keys = total_keys - compliance_violations.len();
 
+        let recommendations = self.generate_compliance_recommendations(standard, &compliance_violations).await;
+        
         Ok(ComplianceReport {
             standard: standard.to_string(),
             generated_at: Utc::now(),
@@ -545,7 +547,7 @@ impl KeyLifecycleManager {
             violation_count: compliance_violations.len(),
             applicable_policies: applicable_policies.len(),
             violations: compliance_violations,
-            recommendations: self.generate_compliance_recommendations(standard, &compliance_violations).await,
+            recommendations,
         })
     }
 
@@ -597,7 +599,7 @@ impl KeyLifecycleManager {
 
                             // Schedule next rotation
                             if let Some(next_rotation) = Self::calculate_next_rotation(&rotation.rotation_config) {
-                                scheduler.scheduled_rotations.insert(key_id, ScheduledRotation {
+                                scheduler.scheduled_rotations.insert(key_id.clone(), ScheduledRotation {
                                     key_id: key_id.clone(),
                                     policy_id: rotation.policy_id,
                                     next_rotation,

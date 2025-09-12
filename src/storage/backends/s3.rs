@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use anyhow::{Result, anyhow};
 use std::collections::HashMap;
 use aws_config::{BehaviorVersion, Region};
-use aws_sdk_s3::{Client, Error as S3Error};
+use aws_sdk_s3::Client;
 use aws_sdk_s3::primitives::{ByteStream};
 use aws_sdk_s3::types::{ObjectCannedAcl};
 use aws_sdk_s3::primitives::ByteStreamError;

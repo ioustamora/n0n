@@ -160,7 +160,7 @@ pub struct OcspResponder {
 }
 
 /// Distinguished Name (X.500)
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct DistinguishedName {
     pub common_name: Option<String>,
     pub organization: Option<String>,

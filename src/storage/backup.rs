@@ -35,6 +35,9 @@ pub enum BackupError {
     #[error("Serialization error: {0}")]
     SerializationError(#[from] serde_json::Error),
     
+    #[error("General error: {0}")]
+    GeneralError(#[from] anyhow::Error),
+    
     #[error("Recovery point not found")]
     RecoveryPointNotFound,
     
@@ -519,12 +522,14 @@ impl BackupManager {
         let destination = backends.get(&schedule.destination_backend)
             .ok_or_else(|| BackupError::BackupFailed("Destination backend not found".to_string()))?;
         
-        // Get list of chunks to backup
-        let all_chunks = source.list_chunks().await?;
-        let all_metadata = source.list_metadata().await?;
+        // Get list of chunks to backup (backup all recipients)
+        // For backup purposes, we need to get chunks for all recipients
+        // This is a simplified approach - in production you might want specific recipient filtering
+        let all_chunks = source.list_chunks("*").await?;
+        let all_metadata = source.list_metadata("*").await?;
         
         record.total_chunks = all_chunks.len() as u64;
-        record.metadata_manifest = all_metadata;
+        record.metadata_manifest = all_metadata.into_iter().map(|(hash, _)| hash).collect();
         
         // Filter chunks based on strategy
         let chunks_to_backup = match &schedule.strategy {
@@ -545,8 +550,9 @@ impl BackupManager {
         
         // Backup each chunk
         for chunk_hash in chunks_to_backup {
-            let chunk_data = source.load_chunk(&chunk_hash).await?;
+            let chunk_data = source.load_chunk("*", &chunk_hash).await?;
             let original_size = chunk_data.len() as u64;
+            let original_checksum = self.calculate_checksum(&chunk_data);
             
             // Optional compression
             let (final_data, compressed_size) = if schedule.compression_enabled {
@@ -562,14 +568,16 @@ impl BackupManager {
             
             // Save to destination
             let backup_location = format!("backup_{}/{}", record.id, chunk_hash);
-            destination.save_chunk(&backup_location, final_data).await?;
+            destination.save_chunk("*", &backup_location, &final_data).await?;
             
             // Record chunk info
             record.chunks_manifest.push(ChunkBackupInfo {
                 chunk_hash: chunk_hash.clone(),
                 original_size,
                 backed_up_size: compressed_size.unwrap_or(original_size),
+                compressed_size,
                 checksum,
+                original_checksum: Some(original_checksum),
                 backup_location,
             });
             
@@ -584,10 +592,10 @@ impl BackupManager {
         
         // Backup metadata
         for metadata_hash in &record.metadata_manifest {
-            if let Ok(metadata) = source.load_metadata(metadata_hash).await {
+            if let Ok(metadata) = source.load_metadata("*", metadata_hash).await {
                 let metadata_json = serde_json::to_vec(&metadata)?;
                 let backup_location = format!("backup_{}/metadata_{}", record.id, metadata_hash);
-                destination.save_chunk(&backup_location, metadata_json).await?;
+                destination.save_chunk("*", &backup_location, &metadata_json).await?;
             }
         }
         
@@ -677,7 +685,7 @@ impl BackupManager {
         destination: &dyn StorageBackend, 
         chunk_info: &ChunkInfo
     ) -> Result<bool, BackupError> {
-        match destination.load_chunk(&chunk_info.backup_location).await {
+        match destination.load_chunk("*", &chunk_info.backup_location).await {
             Ok(data) => {
                 let calculated_checksum = self.calculate_checksum(&data);
                 Ok(calculated_checksum == chunk_info.checksum)
@@ -694,7 +702,7 @@ impl BackupManager {
         metadata_hash: &str
     ) -> Result<bool, BackupError> {
         let metadata_location = format!("backup_{}/metadata_{}", record.id, metadata_hash);
-        match destination.load_chunk(&metadata_location).await {
+        match destination.load_chunk("*", &metadata_location).await {
             Ok(data) => {
                 // Verify metadata can be deserialized
                 match serde_json::from_slice::<ChunkMetadata>(&data) {
@@ -773,7 +781,7 @@ impl BackupManager {
             .ok_or_else(|| BackupError::VerificationFailed("Destination backend not found".to_string()))?;
         
         // Load chunk from backup
-        let backup_data = destination.load_chunk(&chunk_info.backup_location).await
+        let backup_data = destination.load_chunk("*", &chunk_info.backup_location).await
             .map_err(|e| BackupError::RestoreFailed(e.to_string()))?;
         
         // Decompress if needed (simplified logic)
@@ -795,7 +803,7 @@ impl BackupManager {
     /// Comprehensive backup verification with detailed reporting
     pub async fn comprehensive_verification(&self, backup_id: &str) -> Result<ComprehensiveVerificationReport, BackupError> {
         let record = self.find_backup_record(backup_id).await
-            .ok_or_else(|| BackupError::BackupNotFound(backup_id.to_string()))?;
+            .ok_or_else(|| BackupError::BackupNotFound { id: backup_id.to_string() })?;
         
         let verification_start = Utc::now();
         let mut report = ComprehensiveVerificationReport {

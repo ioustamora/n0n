@@ -480,10 +480,10 @@ impl SessionManager {
         }
     }
 
-    /// Get a session by ID
-    pub fn get_session(&self, session_id: &str) -> Result<Option<&SecureSession>> {
+    /// Check if a session exists
+    pub fn session_exists(&self, session_id: &str) -> Result<bool> {
         if let Ok(sessions) = self.sessions.read() {
-            Ok(sessions.get(session_id))
+            Ok(sessions.contains_key(session_id))
         } else {
             Err(anyhow!("Failed to acquire sessions read lock"))
         }

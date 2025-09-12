@@ -41,7 +41,7 @@ impl BackupWidgetState {
         Self {
             backup_name: "default_backup".to_string(),
             backup_strategy: BackupStrategy::Full,
-            backup_frequency: BackupFrequency::Daily,
+            backup_frequency: BackupFrequency::Daily { hour: 2 },
             retention_days: 30,
             max_backups: 10,
             compression_enabled: true,
@@ -123,11 +123,11 @@ fn render_backup_config_section(ui: &mut egui::Ui, backup_state: &mut BackupWidg
                 egui::ComboBox::from_label("")
                     .selected_text(format!("{:?}", backup_state.backup_frequency))
                     .show_ui(ui, |ui| {
-                        ui.selectable_value(&mut backup_state.backup_frequency, BackupFrequency::Hourly, "Hourly");
-                        ui.selectable_value(&mut backup_state.backup_frequency, BackupFrequency::Daily, "Daily");
-                        ui.selectable_value(&mut backup_state.backup_frequency, BackupFrequency::Weekly, "Weekly");
-                        ui.selectable_value(&mut backup_state.backup_frequency, BackupFrequency::Monthly, "Monthly");
-                        ui.selectable_value(&mut backup_state.backup_frequency, BackupFrequency::Custom(3600), "Custom");
+                        ui.selectable_value(&mut backup_state.backup_frequency, BackupFrequency::Hours { interval: 1 }, "Hourly");
+                        ui.selectable_value(&mut backup_state.backup_frequency, BackupFrequency::Daily { hour: 2 }, "Daily");
+                        ui.selectable_value(&mut backup_state.backup_frequency, BackupFrequency::Weekly { day: 0, hour: 2 }, "Weekly");
+                        ui.selectable_value(&mut backup_state.backup_frequency, BackupFrequency::Monthly { day: 1, hour: 2 }, "Monthly");
+                        ui.selectable_value(&mut backup_state.backup_frequency, BackupFrequency::Cron { expression: "0 2 * * *".to_string() }, "Custom");
                     });
                 ui.end_row();
                 

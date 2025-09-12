@@ -93,7 +93,7 @@ impl IpfsBackend {
                 let dir_hash = response.hash;
                 
                 if self.pin_content {
-                    if let Err(e) = self.client.pin_add(&dir_hash, Some(true)).await {
+                    if let Err(e) = self.client.pin_add(&dir_hash, true).await {
                         eprintln!("Warning: Failed to pin directory structure: {}", e);
                     }
                 }
@@ -120,7 +120,7 @@ impl IpfsBackend {
         match self.client.add(Cursor::new(mapping_data.as_bytes())).await {
             Ok(response) => {
                 if self.pin_content {
-                    if let Err(e) = self.client.pin_add(&response.hash, Some(true)).await {
+                    if let Err(e) = self.client.pin_add(&response.hash, true).await {
                         eprintln!("Warning: Failed to pin mapping: {}", e);
                     }
                 }

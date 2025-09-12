@@ -1,13 +1,13 @@
 use async_trait::async_trait;
 use anyhow::Result;
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
 use chrono::{DateTime, Utc};
 
 use crate::storage::backend::{StorageBackend, StorageType, ChunkMetadata, LocalConfig, StorageError};
-use crate::utils::{compute_sha256, create_dir_if_not_exists};
+use crate::utils::create_dir_if_not_exists;
 
 /// Local filesystem storage backend
 pub struct LocalBackend {

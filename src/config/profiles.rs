@@ -417,12 +417,12 @@ impl ProfileManager {
     
     /// Update profile metadata
     pub fn update_profile_metadata(&mut self, name: &str, key: String, value: String) -> Result<(), ProfileError> {
+        let file_path = self.profiles_dir.join(format!("{}.json", name));
         let profile = self.get_profile_mut(name)?;
         profile.metadata.insert(key, value);
         profile.touch();
         
         // Save to disk
-        let file_path = self.profiles_dir.join(format!("{}.json", name));
         let content = serde_json::to_string_pretty(profile)?;
         std::fs::write(&file_path, content)?;
         

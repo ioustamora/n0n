@@ -368,36 +368,36 @@ impl AnalyticsStorageBackend {
 
 #[async_trait]
 impl StorageBackend for AnalyticsStorageBackend {
-    async fn save_chunk(&self, chunk_hash: &str, data: Vec<u8>) -> Result<(), StorageError> {
+    async fn save_chunk(&self, recipient: &str, chunk_hash: &str, data: &[u8]) -> Result<String> {
         let chunk_size = data.len() as u64;
         
         // Check quotas before operation
         self.check_quotas("save", Some(chunk_size)).await
-            .map_err(|e| StorageError::BackendError { message: e.to_string() })?;
+            .map_err(|e| anyhow::anyhow!(e.to_string()))?;
         
         // Perform the actual save operation
-        let result = self.backend.save_chunk(chunk_hash, data).await;
+        let result = self.backend.save_chunk(recipient, chunk_hash, data).await;
         
         // Record the operation (even if it failed, for monitoring purposes)
         if result.is_ok() {
             self.record_operation("save", Some(chunk_size)).await
-                .map_err(|e| StorageError::BackendError { message: e.to_string() })?;
+                .map_err(|e| anyhow::anyhow!(e.to_string()))?;
         }
         
         result
     }
     
-    async fn load_chunk(&self, chunk_hash: &str) -> Result<Vec<u8>, StorageError> {
+    async fn load_chunk(&self, recipient: &str, chunk_hash: &str) -> Result<Vec<u8>> {
         // Check quotas for operation limits
         self.check_quotas("load", None).await
-            .map_err(|e| StorageError::BackendError { message: e.to_string() })?;
+            .map_err(|e| anyhow::anyhow!(e.to_string()))?;
         
-        let result = self.backend.load_chunk(chunk_hash).await;
+        let result = self.backend.load_chunk(recipient, chunk_hash).await;
         
         // Record successful load operations
         if result.is_ok() {
             self.record_operation("load", None).await
-                .map_err(|e| StorageError::BackendError { message: e.to_string() })?;
+                .map_err(|e| anyhow::anyhow!(e.to_string()))?;
         }
         
         result
@@ -426,20 +426,24 @@ impl StorageBackend for AnalyticsStorageBackend {
         result
     }
     
-    async fn save_metadata(&self, file_hash: &str, metadata: ChunkMetadata) -> Result<(), StorageError> {
-        self.backend.save_metadata(file_hash, metadata).await
+    async fn save_metadata(&self, recipient: &str, chunk_hash: &str, metadata: &ChunkMetadata) -> Result<()> {
+        self.backend.save_metadata(recipient, chunk_hash, metadata).await
     }
     
-    async fn load_metadata(&self, file_hash: &str) -> Result<ChunkMetadata, StorageError> {
-        self.backend.load_metadata(file_hash).await
+    async fn load_metadata(&self, recipient: &str, chunk_hash: &str) -> Result<ChunkMetadata> {
+        self.backend.load_metadata(recipient, chunk_hash).await
     }
     
-    async fn list_chunks(&self) -> Result<Vec<String>, StorageError> {
-        self.backend.list_chunks().await
+    async fn list_chunks(&self, recipient: &str) -> Result<Vec<String>> {
+        self.backend.list_chunks(recipient).await
     }
     
-    async fn list_metadata(&self, recipient: &str) -> Result<Vec<(String, ChunkMetadata)>> {
-        self.backend.list_metadata(recipient).await
+    async fn test_connection(&self) -> Result<()> {
+        self.backend.test_connection().await
+    }
+    
+    fn backend_type(&self) -> crate::storage::backend::StorageType {
+        self.backend.backend_type()
     }
     
     async fn get_storage_info(&self) -> Result<HashMap<String, String>> {
@@ -472,7 +476,7 @@ impl StorageBackend for AnalyticsStorageBackend {
         self.backend.cleanup().await
     }
     
-    async fn health_check(&self) -> Result<HashMap<String, String>, StorageError> {
+    async fn health_check(&self) -> Result<HashMap<String, String>> {
         let mut health = self.backend.health_check().await?;
         let stats = self.usage_stats.read().await;
         

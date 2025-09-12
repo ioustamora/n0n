@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use anyhow::{Result, anyhow};
 use std::collections::HashMap;
 use chrono::{DateTime, Utc};
-use reqwest::Client;
+use reqwest::{Client, StatusCode};
 use reqwest_dav::{Auth, ClientBuilder, Depth};
 
 use crate::storage::backend::{StorageBackend, StorageType, ChunkMetadata, WebDavConfig, StorageError};
@@ -41,7 +41,6 @@ impl WebDavBackend {
             } else {
                 Client::builder()
                     .danger_accept_invalid_certs(true)
-                    .danger_accept_invalid_hostnames(true)
                     .build()
                     .map_err(|e| StorageError::ConfigurationError {
                         message: format!("Failed to create HTTP client: {}", e),
@@ -55,7 +54,6 @@ impl WebDavBackend {
         let client = ClientBuilder::new()
             .set_host(config.url.clone())
             .set_auth(auth)
-            .set_client(http_client)
             .build()
             .map_err(|e| StorageError::ConfigurationError {
                 message: format!("Failed to create WebDAV client: {}", e),

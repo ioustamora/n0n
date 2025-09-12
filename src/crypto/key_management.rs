@@ -433,7 +433,7 @@ impl KeyManagementSystem {
             expires_at: old_master_key.expires_at,
             status: KeyStatus::Active,
             policy_id: old_master_key.policy_id.clone(),
-            metadata: old_master_key.metadata,
+            metadata: old_master_key.metadata.clone(),
             hsm_key_id: None,
         };
 

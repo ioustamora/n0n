@@ -419,63 +419,31 @@ impl ConfigImporter {
         metadata_file.read_to_string(&mut metadata_content)?;
         let metadata: BundleMetadata = serde_json::from_str(&metadata_content)?;
         
-        // Read profiles
+        // Collect all files in one pass to avoid multiple borrows
         let mut profiles = HashMap::new();
+        let mut environments = HashMap::new();
+        let mut schemas = HashMap::new();
+        let mut custom_data = HashMap::new();
+        
         for i in 0..archive.len() {
             let mut file = archive.by_index(i)
                 .map_err(|e| ImportExportError::ArchiveError(e.to_string()))?;
             let name = file.name().to_string();
+            let mut content = String::new();
+            file.read_to_string(&mut content)?;
             
             if name.starts_with("profiles/") && name.ends_with(".json") {
-                let mut content = String::new();
-                file.read_to_string(&mut content)?;
                 let profile: ConfigurationProfile = serde_json::from_str(&content)?;
                 profiles.insert(profile.name.clone(), profile);
-            }
-        }
-        
-        // Read environments
-        let mut environments = HashMap::new();
-        for i in 0..archive.len() {
-            let mut file = archive.by_index(i)
-                .map_err(|e| ImportExportError::ArchiveError(e.to_string()))?;
-            let name = file.name().to_string();
-            
-            if name.starts_with("environments/") && name.ends_with(".json") {
-                let mut content = String::new();
-                file.read_to_string(&mut content)?;
+            } else if name.starts_with("environments/") && name.ends_with(".json") {
                 let env: EnvironmentConfig = serde_json::from_str(&content)?;
                 environments.insert(env.name.clone(), env);
-            }
-        }
-        
-        // Read schemas if present
-        let mut schemas = HashMap::new();
-        for i in 0..archive.len() {
-            let mut file = archive.by_index(i)
-                .map_err(|e| ImportExportError::ArchiveError(e.to_string()))?;
-            let name = file.name().to_string();
-            
-            if name.starts_with("schemas/") && name.ends_with(".json") {
-                let mut content = String::new();
-                file.read_to_string(&mut content)?;
+            } else if name.starts_with("schemas/") && name.ends_with(".json") {
                 let schema: serde_json::Value = serde_json::from_str(&content)?;
                 let schema_name = name.trim_start_matches("schemas/")
                     .trim_end_matches(".json");
                 schemas.insert(schema_name.to_string(), schema);
-            }
-        }
-        
-        // Read custom data if present
-        let mut custom_data = HashMap::new();
-        for i in 0..archive.len() {
-            let mut file = archive.by_index(i)
-                .map_err(|e| ImportExportError::ArchiveError(e.to_string()))?;
-            let name = file.name().to_string();
-            
-            if name.starts_with("custom/") && name.ends_with(".json") {
-                let mut content = String::new();
-                file.read_to_string(&mut content)?;
+            } else if name.starts_with("custom/") && name.ends_with(".json") {
                 let data: serde_json::Value = serde_json::from_str(&content)?;
                 let data_name = name.trim_start_matches("custom/")
                     .trim_end_matches(".json");

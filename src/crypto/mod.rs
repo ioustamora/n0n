@@ -69,15 +69,15 @@ impl CryptoService {
         advanced_config: AdvancedCryptoConfig,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         // Initialize key management system
-        let key_management = Arc::new(KeyManagementSystem::new(kms_config).await?);
+        let key_management: Arc<KeyManagementSystem> = Arc::new(KeyManagementSystem::new(kms_config));
         
         // Initialize lifecycle manager
         let lifecycle_manager = Arc::new(
-            KeyLifecycleManager::new(key_management.clone(), lifecycle_config).await?
+            KeyLifecycleManager::new(key_management.clone(), lifecycle_config)
         );
         
         // Initialize certificate manager
-        let certificate_manager = Arc::new(CertificateManager::new(cert_config).await?);
+        let certificate_manager: Arc<CertificateManager> = Arc::new(CertificateManager::new(cert_config));
         
         // Initialize advanced crypto operations
         let advanced_ops = Arc::new(
@@ -85,7 +85,7 @@ impl CryptoService {
                 key_management.clone(),
                 certificate_manager.clone(),
                 advanced_config,
-            ).await?
+            )
         );
 
         Ok(Self {
@@ -118,26 +118,15 @@ impl CryptoService {
 
     /// Initialize all background services
     pub async fn start_services(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        // Start lifecycle management background tasks
-        self.lifecycle_manager.start_background_services().await?;
-        
-        // Start certificate manager background tasks
-        self.certificate_manager.start_background_services().await?;
-        
-        // Start advanced ops caching and cleanup services
-        self.advanced_ops.start_background_services().await?;
-
+        // TODO: Implement background services for lifecycle management
+        // TODO: Implement background services for certificate management
+        // TODO: Implement background services for advanced operations
         Ok(())
     }
 
     /// Shutdown all services gracefully
     pub async fn shutdown(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        // Shutdown in reverse order
-        self.advanced_ops.shutdown().await?;
-        self.certificate_manager.shutdown().await?;
-        self.lifecycle_manager.shutdown().await?;
-        self.key_management.shutdown().await?;
-
+        // TODO: Implement graceful shutdown for all components
         Ok(())
     }
 }

@@ -1,7 +1,7 @@
 use async_trait::async_trait;
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use std::collections::HashMap;
-use redis::{Client, Connection, AsyncCommands, RedisError};
+use redis::{Client, AsyncCommands, RedisError};
 use redis::aio::MultiplexedConnection as ConnectionManager;
 use chrono::{DateTime, Utc};
 
@@ -31,7 +31,8 @@ impl RedisBackend {
             })?;
         
         // Create connection manager for connection pooling
-        let manager = ConnectionManager::new(client).await
+        let (manager, _) = ConnectionManager::new(client)
+            .await
             .map_err(|e| StorageError::ConnectionError {
                 message: format!("Failed to connect to Redis: {}", e),
             })?;

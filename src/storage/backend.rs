@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use serde::{Serialize, Deserialize};
 
 /// Storage backend types supported by the system
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 pub enum StorageType {
     #[default]
     Local,
@@ -42,7 +42,7 @@ impl std::str::FromStr for StorageType {
 }
 
 /// Metadata for a stored chunk
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChunkMetadata {
     pub nonce: String,
     pub sender_public_key: String,

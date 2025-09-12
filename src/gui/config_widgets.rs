@@ -147,7 +147,12 @@ impl AppState {
             if let Some(config_state) = &self.config_state {
                 if config_state.show_validation_results {
                     if let Some(result) = &config_state.last_validation_result {
-                        self.render_validation_results(ui, result);
+                        let should_close = self.render_validation_results(ui, result);
+                        if should_close {
+                            if let Some(config_state) = &mut self.config_state {
+                                config_state.show_validation_results = false;
+                            }
+                        }
                     }
                 }
             }
@@ -457,14 +462,13 @@ impl AppState {
     }
     
     /// Render validation results
-    fn render_validation_results(&mut self, ui: &mut egui::Ui, result: &crate::config::validation::ValidationResult) {
+    fn render_validation_results(&self, ui: &mut egui::Ui, result: &crate::config::validation::ValidationResult) -> bool {
+        let mut should_close = false;
         ui.group(|ui| {
             ui.horizontal(|ui| {
                 ui.label("Validation Results");
                 if ui.button("✕").clicked() {
-                    if let Some(config_state) = &mut self.config_state {
-                        config_state.show_validation_results = false;
-                    }
+                    should_close = true;
                 }
             });
             
@@ -498,6 +502,7 @@ impl AppState {
                 }
             }
         });
+        should_close
     }
     
     /// Validate current configuration

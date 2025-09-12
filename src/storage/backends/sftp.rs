@@ -1,8 +1,6 @@
 use async_trait::async_trait;
 use anyhow::{Result, anyhow};
 use std::collections::HashMap;
-use std::sync::Arc;
-use tokio::sync::Mutex;
 use chrono::{DateTime, Utc};
 
 use crate::storage::backend::{StorageBackend, StorageType, ChunkMetadata, SftpConfig, StorageError};
