@@ -385,7 +385,7 @@ impl XssDetector {
             r"<embed",
             r"<form",
             r"<input",
-            r"<img[^>]+src\s*=\s*[\"']?\s*javascript:",
+            r"<img[^>]+src\s*=.*javascript:",
         ];
 
         for pattern in &xss_patterns {

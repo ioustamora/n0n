@@ -214,13 +214,6 @@ impl Drop for PerfTimer {
     }
 }
 
-/// Create a performance timer that logs on drop
-#[macro_export]
-macro_rules! perf_timer {
-    ($name:expr) => {
-        let _timer = $crate::logging::PerfTimer::new($name);
-    };
-}
 
 /// Async span helper for tracing function calls
 #[macro_export]

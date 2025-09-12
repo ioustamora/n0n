@@ -296,7 +296,7 @@ impl LogCorrelation {
 
     /// Create a span with correlation ID
     pub fn span(&self, name: &str) -> tracing::Span {
-        tracing::info_span!(name, correlation_id = %self.correlation_id)
+        tracing::info_span!("operation", operation = name, correlation_id = %self.correlation_id)
     }
 
     /// Log with correlation context
@@ -364,7 +364,8 @@ impl RequestContext {
     /// Create a span with full request context
     pub fn span(&self, name: &str) -> tracing::Span {
         tracing::info_span!(
-            name,
+            "request",
+            operation = name,
             request_id = %self.request_id,
             user_id = ?self.user_id,
             session_id = ?self.session_id,

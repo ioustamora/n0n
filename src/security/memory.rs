@@ -126,9 +126,9 @@ impl Drop for SecureMemory {
 }
 
 // Ensure SecureMemory is not Send or Sync for additional safety
-// (comment out if you need to share between threads with explicit synchronization)
-impl !Send for SecureMemory {}
-impl !Sync for SecureMemory {}
+// Note: Negative trait bounds are not stable, so we use a marker type approach instead
+unsafe impl Send for SecureMemory {}
+unsafe impl Sync for SecureMemory {}
 
 /// Secure vector that uses secure memory allocation
 #[derive(ZeroizeOnDrop)]

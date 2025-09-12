@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use thiserror::Error;
+use anyhow::Result;
 
 use crate::storage::backend::{StorageBackend, ChunkMetadata, StorageError};
 

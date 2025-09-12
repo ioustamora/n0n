@@ -1,12 +1,13 @@
 use hkdf::Hkdf;
 use pbkdf2::{pbkdf2_hmac, pbkdf2_hmac_array};
 use scrypt::{Scrypt, Params as ScryptParams};
-use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier, Salt};
+use argon2::{Argon2, PasswordHash, PasswordHasher as Argon2PasswordHasher, PasswordVerifier};
 use sha2::{Sha256, Sha512};
 use hmac::{Hmac, Mac};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 use anyhow::{Result, anyhow};
 use std::time::Instant;
+use base64::Engine;
 
 /// Key derivation algorithms
 #[derive(Debug, Clone, Copy)]
@@ -266,21 +267,18 @@ fn argon2_derive(password: &[u8], salt: &[u8], params: &KdfParams) -> Result<Vec
     let time_cost = params.iterations;
     let parallelism = params.parallelism.unwrap_or(4);
     
-    let config = argon2::Config::new(
-        argon2::Variant::Argon2id,
-        argon2::Version::Version13,
-        memory_cost,
-        time_cost,
-        parallelism,
-        None, // No secret key
-        None, // No associated data
-        params.output_len,
+    let argon2 = Argon2::new(
+        argon2::Algorithm::Argon2id,
+        argon2::Version::V0x13,
+        argon2::Params::new(memory_cost, time_cost, parallelism, Some(params.output_len))
+            .map_err(|e| anyhow!("Invalid Argon2 parameters: {}", e))?,
     );
     
-    let hash = argon2::hash_raw(password, salt, &config)
+    let mut output = vec![0u8; params.output_len];
+    argon2.hash_password_into(password, salt, &mut output)
         .map_err(|e| anyhow!("Argon2 derivation failed: {}", e))?;
     
-    Ok(hash)
+    Ok(output)
 }
 
 /// HKDF with SHA-256
@@ -467,8 +465,8 @@ impl PasswordHasher {
         let encoded = format!(
             "${}${}${}${}${}",
             algorithm_name(self.algorithm),
-            base64::encode(&derived.salt),
-            base64::encode(&derived.key),
+            base64::engine::general_purpose::STANDARD.encode(&derived.salt),
+            base64::engine::general_purpose::STANDARD.encode(&derived.key),
             format_params(&self.params),
             derived.derivation_time.as_millis()
         );
@@ -544,10 +542,10 @@ fn parse_stored_hash(stored_hash: &str) -> Result<DerivedKey> {
         _ => return Err(anyhow!("Unknown algorithm: {}", parts[1])),
     };
 
-    let salt = base64::decode(parts[2])
+    let salt = base64::engine::general_purpose::STANDARD.decode(parts[2])
         .map_err(|e| anyhow!("Invalid salt encoding: {}", e))?;
     
-    let key = base64::decode(parts[3])
+    let key = base64::engine::general_purpose::STANDARD.decode(parts[3])
         .map_err(|e| anyhow!("Invalid key encoding: {}", e))?;
     
     let params = parse_params(algorithm, parts[4])?;

@@ -20,7 +20,8 @@
       "Bash(timeout 15 cargo clippy --message-format=short)",
       "Bash(timeout 10 cargo clippy -- --allow warnings)",
       "Bash(timeout 20 cargo clippy -- -W clippy::too-many-arguments)",
-      "Bash(timeout 30 cargo test --test unit_utils_tests --lib)"
+      "Bash(timeout 30 cargo test --test unit_utils_tests --lib)",
+      "Bash(timeout 30 cargo check)"
     ],
     "deny": [],
     "ask": []
