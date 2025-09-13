@@ -102,7 +102,6 @@ impl KdfParams {
 }
 
 /// Derived key with metadata
-#[derive(ZeroizeOnDrop)]
 pub struct DerivedKey {
     key: Vec<u8>,
     salt: Vec<u8>,
@@ -166,6 +165,14 @@ impl DerivedKey {
         );
 
         Ok(matches)
+    }
+}
+
+impl Drop for DerivedKey {
+    fn drop(&mut self) {
+        self.key.zeroize();
+        self.salt.zeroize();
+        // params and derivation_time don't need zeroizing
     }
 }
 

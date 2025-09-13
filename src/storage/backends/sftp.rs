@@ -1,7 +1,12 @@
 use async_trait::async_trait;
 use anyhow::{Result, anyhow};
 use std::collections::HashMap;
+use std::path::Path;
+use std::io::{Read, Write};
 use chrono::{DateTime, Utc};
+use tokio::task;
+use ssh2::Session;
+use std::net::TcpStream;
 
 use crate::storage::backend::{StorageBackend, StorageType, ChunkMetadata, SftpConfig, StorageError};
 
@@ -9,8 +14,7 @@ use crate::storage::backend::{StorageBackend, StorageType, ChunkMetadata, SftpCo
 /// Note: This is a simplified implementation that would need proper async SFTP client
 pub struct SftpBackend {
     config: SftpConfig,
-    // In a real implementation, this would be an async SFTP client pool
-    _connection_info: String,
+    connection_info: String,
 }
 
 impl SftpBackend {
@@ -46,7 +50,7 @@ impl SftpBackend {
         
         Ok(Self {
             config,
-            _connection_info: connection_info,
+            connection_info: connection_info,
         })
     }
     
@@ -62,43 +66,165 @@ impl SftpBackend {
         format!("{}.meta", self.get_remote_path(recipient, chunk_hash))
     }
     
-    // In a real implementation, these would use an async SFTP client
-    // For now, we'll create placeholder implementations
-    
-    async fn _ensure_remote_directory(&self, _path: &str) -> Result<()> {
-        // TODO: Implement actual SFTP directory creation
-        // This would use an async SFTP client to create remote directories
-        Ok(())
+    /// Create an SFTP session
+    async fn create_session(&self) -> Result<Session> {
+        let config = &self.config;
+        let host = config.host.clone();
+        let port = config.port.unwrap_or(22);
+        let username = config.username.clone();
+        let password = config.password.clone();
+        let private_key_path = config.private_key_path.clone();
+        let private_key_content = config.private_key_content.clone();
+        
+        task::spawn_blocking(move || {
+            // Connect to the SSH server
+            let tcp = TcpStream::connect(format!("{}:{}", host, port))?;
+            let mut sess = Session::new()?;
+            sess.set_tcp_stream(tcp);
+            sess.handshake()?;
+            
+            // Authenticate
+            if let Some(password) = password {
+                sess.userauth_password(&username, &password)?;
+            } else if let Some(key_content) = private_key_content {
+                // Create a temporary file for the private key content
+                use std::io::Write;
+                let mut temp_file = tempfile::NamedTempFile::new()?;
+                temp_file.write_all(key_content.as_bytes())?;
+                sess.userauth_pubkey_file(&username, None, temp_file.path(), None)?;
+            } else if let Some(key_path) = private_key_path {
+                sess.userauth_pubkey_file(&username, None, Path::new(&key_path), None)?;
+            } else {
+                return Err(anyhow!("No authentication method provided"));
+            }
+            
+            if !sess.authenticated() {
+                return Err(anyhow!("Authentication failed"));
+            }
+            
+            Ok(sess)
+        }).await?
     }
     
-    async fn _upload_data(&self, _remote_path: &str, _data: &[u8]) -> Result<()> {
-        // TODO: Implement actual SFTP file upload
-        // This would use an async SFTP client to upload data
-        Ok(())
+    async fn _ensure_remote_directory(&self, path: &str) -> Result<()> {
+        let path = path.to_string();
+        let sess = self.create_session().await?;
+        
+        task::spawn_blocking(move || {
+            let sftp = sess.sftp()?;
+            
+            // Create directory recursively
+            let path_parts: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
+            let mut current_path = String::new();
+            
+            for part in path_parts {
+                current_path.push('/');
+                current_path.push_str(part);
+                
+                // Try to create directory, ignore error if it already exists
+                let _ = sftp.mkdir(Path::new(&current_path), 0o755);
+            }
+            
+            Ok(())
+        }).await?
     }
     
-    async fn _download_data(&self, _remote_path: &str) -> Result<Vec<u8>> {
-        // TODO: Implement actual SFTP file download
-        // This would use an async SFTP client to download data
-        Err(anyhow!("SFTP download not yet implemented"))
+    async fn _upload_data(&self, remote_path: &str, data: &[u8]) -> Result<()> {
+        let remote_path = remote_path.to_string();
+        let data = data.to_vec();
+        let sess = self.create_session().await?;
+        
+        task::spawn_blocking(move || {
+            let sftp = sess.sftp()?;
+            
+            // Ensure parent directory exists
+            if let Some(parent) = Path::new(&remote_path).parent() {
+                let parent_str = parent.to_str().unwrap_or("");
+                if !parent_str.is_empty() {
+                    let path_parts: Vec<&str> = parent_str.split('/').filter(|s| !s.is_empty()).collect();
+                    let mut current_path = String::new();
+                    
+                    for part in path_parts {
+                        current_path.push('/');
+                        current_path.push_str(part);
+                        let _ = sftp.mkdir(Path::new(&current_path), 0o755);
+                    }
+                }
+            }
+            
+            // Upload the file
+            let mut remote_file = sftp.create(Path::new(&remote_path))?;
+            remote_file.write_all(&data)?;
+            remote_file.fsync()?;
+            
+            Ok(())
+        }).await?
     }
     
-    async fn _list_remote_files(&self, _remote_dir: &str) -> Result<Vec<String>> {
-        // TODO: Implement actual SFTP directory listing
-        // This would use an async SFTP client to list files
-        Ok(Vec::new())
+    async fn _download_data(&self, remote_path: &str) -> Result<Vec<u8>> {
+        let remote_path = remote_path.to_string();
+        let sess = self.create_session().await?;
+        
+        task::spawn_blocking(move || {
+            let sftp = sess.sftp()?;
+            
+            // Download the file
+            let mut remote_file = sftp.open(Path::new(&remote_path))?;
+            let mut buffer = Vec::new();
+            remote_file.read_to_end(&mut buffer)?;
+            
+            Ok(buffer)
+        }).await?
     }
     
-    async fn _delete_remote_file(&self, _remote_path: &str) -> Result<()> {
-        // TODO: Implement actual SFTP file deletion
-        // This would use an async SFTP client to delete files
-        Ok(())
+    async fn _list_remote_files(&self, remote_dir: &str) -> Result<Vec<String>> {
+        let remote_dir = remote_dir.to_string();
+        let sess = self.create_session().await?;
+        
+        task::spawn_blocking(move || {
+            let sftp = sess.sftp()?;
+            
+            // List directory contents
+            let readdir = sftp.readdir(Path::new(&remote_dir))?;
+            let mut files = Vec::new();
+            
+            for (path, _stat) in readdir {
+                if let Some(filename) = path.file_name() {
+                    if let Some(name_str) = filename.to_str() {
+                        files.push(name_str.to_string());
+                    }
+                }
+            }
+            
+            Ok(files)
+        }).await?
+    }
+    
+    async fn _delete_remote_file(&self, remote_path: &str) -> Result<()> {
+        let remote_path = remote_path.to_string();
+        let sess = self.create_session().await?;
+        
+        task::spawn_blocking(move || {
+            let sftp = sess.sftp()?;
+            
+            // Delete the file
+            sftp.unlink(Path::new(&remote_path))?;
+            
+            Ok(())
+        }).await?
     }
     
     async fn _test_sftp_connection(&self) -> Result<()> {
-        // TODO: Implement actual SFTP connection test
-        // This would establish an SFTP connection and perform a basic operation
-        Ok(())
+        let sess = self.create_session().await?;
+        
+        task::spawn_blocking(move || {
+            let sftp = sess.sftp()?;
+            
+            // Test basic SFTP functionality by getting the home directory
+            let _home = sftp.realpath(Path::new("."))?;
+            
+            Ok(())
+        }).await?
     }
 }
 

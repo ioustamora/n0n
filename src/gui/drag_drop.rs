@@ -262,18 +262,20 @@ impl EnhancedFileDialog {
             
             // Current selection display
             if let Some(selected) = current_selection {
-                ui.horizontal(|ui| {
+                let file_name = selected.file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("Unknown file");
+                
+                let should_clear = ui.horizontal(|ui| {
                     ui.label("Selected:");
-                    let file_name = selected.file_name()
-                        .and_then(|n| n.to_str())
-                        .unwrap_or("Unknown file");
                     ui.monospace(file_name);
-                    
-                    if ui.button("Clear").clicked() {
-                        *current_selection = None;
-                        selection_changed = true;
-                    }
-                });
+                    ui.button("Clear").clicked()
+                }).inner;
+                
+                if should_clear {
+                    *current_selection = None;
+                    selection_changed = true;
+                }
                 
                 ui.separator();
             }

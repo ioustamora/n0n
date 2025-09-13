@@ -10,7 +10,8 @@ pub struct StorageFactory;
 
 impl StorageFactory {
     /// Create a storage backend from configuration
-    pub async fn create_backend(config: StorageConfig) -> Result<Arc<dyn StorageBackend>> {
+    pub fn create_backend(config: StorageConfig) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Arc<dyn StorageBackend>>> + Send>> {
+        Box::pin(async move {
         match config.backend_type {
             StorageType::Local => {
                 let local_config = config.local.ok_or_else(|| {
@@ -20,7 +21,7 @@ impl StorageFactory {
                 })?;
                 
                 let backend = LocalBackend::new(local_config).await?;
-                Ok(Arc::new(backend))
+                Ok(Arc::new(backend) as Arc<dyn StorageBackend>)
             }
             
             StorageType::Sftp => {
@@ -31,7 +32,7 @@ impl StorageFactory {
                 })?;
                 
                 let backend = SftpBackend::new(sftp_config).await?;
-                Ok(Arc::new(backend))
+                Ok(Arc::new(backend) as Arc<dyn StorageBackend>)
             }
             
             StorageType::S3Compatible => {
@@ -42,7 +43,7 @@ impl StorageFactory {
                 })?;
                 
                 let backend = S3Backend::new(s3_config).await?;
-                Ok(Arc::new(backend))
+                Ok(Arc::new(backend) as Arc<dyn StorageBackend>)
             }
             
             StorageType::GoogleCloud => {
@@ -53,7 +54,7 @@ impl StorageFactory {
                 })?;
                 
                 let backend = GcsBackend::new(gcs_config).await?;
-                Ok(Arc::new(backend))
+                Ok(Arc::new(backend) as Arc<dyn StorageBackend>)
             }
             
             StorageType::AzureBlob => {
@@ -64,7 +65,7 @@ impl StorageFactory {
                 })?;
                 
                 let backend = AzureBackend::new(azure_config).await?;
-                Ok(Arc::new(backend))
+                Ok(Arc::new(backend) as Arc<dyn StorageBackend>)
             }
             
             StorageType::PostgreSQL => {
@@ -75,7 +76,7 @@ impl StorageFactory {
                 })?;
                 
                 let backend = PostgreSQLBackend::new(pg_config).await?;
-                Ok(Arc::new(backend))
+                Ok(Arc::new(backend) as Arc<dyn StorageBackend>)
             }
             
             StorageType::Redis => {
@@ -86,7 +87,7 @@ impl StorageFactory {
                 })?;
                 
                 let backend = RedisBackend::new(redis_config).await?;
-                Ok(Arc::new(backend))
+                Ok(Arc::new(backend) as Arc<dyn StorageBackend>)
             }
             
             StorageType::WebDav => {
@@ -97,7 +98,7 @@ impl StorageFactory {
                 })?;
                 
                 let backend = WebDavBackend::new(webdav_config).await?;
-                Ok(Arc::new(backend))
+                Ok(Arc::new(backend) as Arc<dyn StorageBackend>)
             }
             
             StorageType::Ipfs => {
@@ -108,7 +109,7 @@ impl StorageFactory {
                 })?;
                 
                 let backend = IpfsBackend::new(ipfs_config).await?;
-                Ok(Arc::new(backend))
+                Ok(Arc::new(backend) as Arc<dyn StorageBackend>)
             }
             
             StorageType::MultiCloud => {
@@ -178,11 +179,11 @@ impl StorageFactory {
                 }
                 
                 let backend = MultiCloudBackend::new(replication_config, all_configs).await?;
-                Ok(Arc::new(backend))
+                Ok(Arc::new(backend) as Arc<dyn StorageBackend>)
             }
             
             StorageType::CachedCloud => {
-                let cached_config = config.cached_cloud.ok_or_else(|| {
+                let cached_config = config.cached_cloud.clone().ok_or_else(|| {
                     StorageError::ConfigurationError {
                         message: "Cached cloud storage config is required".to_string(),
                     }
@@ -225,9 +226,10 @@ impl StorageFactory {
                 };
                 
                 let backend = CachedCloudBackend::new(cached_cloud_config).await?;
-                Ok(Arc::new(backend))
+                Ok(Arc::new(backend) as Arc<dyn StorageBackend>)
             }
         }
+        })
     }
     
     /// Get a list of available backend types

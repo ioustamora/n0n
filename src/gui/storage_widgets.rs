@@ -1,8 +1,7 @@
 use eframe::egui;
-use std::sync::atomic::Ordering;
 use crate::gui::state::{AppState, StorageBackendConfig};
 use crate::storage::backend::{StorageType, StorageConfig, LocalConfig, SftpConfig, S3Config, GcsConfig, AzureConfig, PostgreSQLConfig, RedisConfig, WebDavConfig, IpfsConfig, CachedCloudConfigSimple};
-use crate::storage::factory::{StorageFactory, StorageManager};
+use crate::storage::factory::StorageFactory;
 
 impl AppState {
     /// Render the main storage backend selection and configuration section
@@ -78,17 +77,17 @@ impl AppState {
         let config = self.storage_configs.entry(backend_type).or_insert_with(StorageBackendConfig::default);
         
         match backend_type {
-            StorageType::Local => self.render_local_config(ui, config),
-            StorageType::Sftp => self.render_sftp_config(ui, config),
-            StorageType::S3Compatible => self.render_s3_config(ui, config),
-            StorageType::GoogleCloud => self.render_gcs_config(ui, config),
-            StorageType::AzureBlob => self.render_azure_config(ui, config),
-            StorageType::PostgreSQL => self.render_postgres_config(ui, config),
-            StorageType::Redis => self.render_redis_config(ui, config),
-            StorageType::WebDav => self.render_webdav_config(ui, config),
-            StorageType::Ipfs => self.render_ipfs_config(ui, config),
-            StorageType::MultiCloud => self.render_multicloud_config(ui, config),
-            StorageType::CachedCloud => self.render_cached_cloud_config(ui, config),
+            StorageType::Local => Self::render_local_config(ui, config),
+            StorageType::Sftp => Self::render_sftp_config(ui, config),
+            StorageType::S3Compatible => Self::render_s3_config(ui, config),
+            StorageType::GoogleCloud => Self::render_gcs_config(ui, config),
+            StorageType::AzureBlob => Self::render_azure_config(ui, config),
+            StorageType::PostgreSQL => Self::render_postgres_config(ui, config),
+            StorageType::Redis => Self::render_redis_config(ui, config),
+            StorageType::WebDav => Self::render_webdav_config(ui, config),
+            StorageType::Ipfs => Self::render_ipfs_config(ui, config),
+            StorageType::MultiCloud => Self::render_multicloud_config(ui, config),
+            StorageType::CachedCloud => Self::render_cached_cloud_config(ui, config),
             _ => {
                 ui.label("Configuration for this backend is not yet implemented");
             }
@@ -96,7 +95,7 @@ impl AppState {
     }
     
     /// Render local storage configuration
-    fn render_local_config(&mut self, ui: &mut egui::Ui, config: &mut StorageBackendConfig) {
+    fn render_local_config(ui: &mut egui::Ui, config: &mut StorageBackendConfig) {
         ui.label("Local Storage Configuration");
         
         ui.horizontal(|ui| {
@@ -120,7 +119,7 @@ impl AppState {
     }
     
     /// Render SFTP configuration
-    fn render_sftp_config(&mut self, ui: &mut egui::Ui, config: &mut StorageBackendConfig) {
+    fn render_sftp_config(ui: &mut egui::Ui, config: &mut StorageBackendConfig) {
         ui.label("SFTP Configuration");
         
         ui.horizontal(|ui| {
@@ -169,7 +168,7 @@ impl AppState {
     }
     
     /// Render S3-compatible storage configuration
-    fn render_s3_config(&mut self, ui: &mut egui::Ui, config: &mut StorageBackendConfig) {
+    fn render_s3_config(ui: &mut egui::Ui, config: &mut StorageBackendConfig) {
         ui.label("S3-Compatible Storage Configuration");
         
         ui.horizontal(|ui| {
@@ -205,7 +204,7 @@ impl AppState {
     }
     
     /// Render Google Cloud Storage configuration
-    fn render_gcs_config(&mut self, ui: &mut egui::Ui, config: &mut StorageBackendConfig) {
+    fn render_gcs_config(ui: &mut egui::Ui, config: &mut StorageBackendConfig) {
         ui.label("Google Cloud Storage Configuration");
         
         ui.horizontal(|ui| {
@@ -231,7 +230,7 @@ impl AppState {
     }
     
     /// Render Azure Blob Storage configuration
-    fn render_azure_config(&mut self, ui: &mut egui::Ui, config: &mut StorageBackendConfig) {
+    fn render_azure_config(ui: &mut egui::Ui, config: &mut StorageBackendConfig) {
         ui.label("Azure Blob Storage Configuration");
         
         ui.horizontal(|ui| {
@@ -256,7 +255,7 @@ impl AppState {
     }
     
     /// Render PostgreSQL configuration
-    fn render_postgres_config(&mut self, ui: &mut egui::Ui, config: &mut StorageBackendConfig) {
+    fn render_postgres_config(ui: &mut egui::Ui, config: &mut StorageBackendConfig) {
         ui.label("PostgreSQL Configuration");
         
         ui.horizontal(|ui| {
@@ -272,7 +271,7 @@ impl AppState {
     }
     
     /// Render Redis configuration
-    fn render_redis_config(&mut self, ui: &mut egui::Ui, config: &mut StorageBackendConfig) {
+    fn render_redis_config(ui: &mut egui::Ui, config: &mut StorageBackendConfig) {
         ui.label("Redis Configuration");
         
         ui.horizontal(|ui| {
@@ -294,7 +293,7 @@ impl AppState {
     }
     
     /// Render MultiCloud configuration
-    fn render_multicloud_config(&mut self, ui: &mut egui::Ui, config: &mut StorageBackendConfig) {
+    fn render_multicloud_config(ui: &mut egui::Ui, config: &mut StorageBackendConfig) {
         ui.label("Multi-Cloud Replication Configuration");
         
         ui.horizontal(|ui| {
@@ -338,7 +337,7 @@ impl AppState {
     }
     
     /// Render WebDAV configuration
-    fn render_webdav_config(&mut self, ui: &mut egui::Ui, config: &mut StorageBackendConfig) {
+    fn render_webdav_config(ui: &mut egui::Ui, config: &mut StorageBackendConfig) {
         ui.label("WebDAV Configuration");
         
         ui.horizontal(|ui| {
@@ -369,7 +368,7 @@ impl AppState {
     }
     
     /// Render IPFS configuration
-    fn render_ipfs_config(&mut self, ui: &mut egui::Ui, config: &mut StorageBackendConfig) {
+    fn render_ipfs_config(ui: &mut egui::Ui, config: &mut StorageBackendConfig) {
         ui.label("IPFS Configuration");
         
         ui.horizontal(|ui| {
@@ -395,7 +394,7 @@ impl AppState {
     }
     
     /// Render Cached Cloud configuration
-    fn render_cached_cloud_config(&mut self, ui: &mut egui::Ui, config: &mut StorageBackendConfig) {
+    fn render_cached_cloud_config(ui: &mut egui::Ui, config: &mut StorageBackendConfig) {
         ui.label("Cached Cloud Storage Configuration");
         
         ui.horizontal(|ui| {
@@ -410,7 +409,7 @@ impl AppState {
         
         ui.horizontal(|ui| {
             ui.label("Max Cache Size (MB):");
-            ui.add(egui::DragValue::new(&mut config.cache_max_size_mb).range(0..=10240));
+            ui.add(egui::DragValue::new(&mut config.cache_max_size_mb).clamp_range(0..=10240));
         });
         
         ui.horizontal(|ui| {
@@ -747,7 +746,7 @@ impl AppState {
                 // Key generation helper
                 ui.horizontal(|ui| {
                     if ui.button("Generate Strong Password").clicked() {
-                        current_config.encryption_password = self.generate_strong_password();
+                        current_config.encryption_password = Self::generate_strong_password();
                     }
                     ui.label("Generates a 32-character random password");
                 });
@@ -756,7 +755,7 @@ impl AppState {
     }
     
     /// Generate a strong random password for encryption
-    fn generate_strong_password(&self) -> String {
+    fn generate_strong_password() -> String {
         use rand::Rng;
         const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*";
         let mut rng = rand::thread_rng();
@@ -786,7 +785,7 @@ impl AppState {
             if current_config.analytics_enabled {
                 ui.horizontal(|ui| {
                     ui.label("Statistics retention (days):");
-                    ui.add(egui::DragValue::new(&mut current_config.stats_retention_days).range(1..=365));
+                    ui.add(egui::DragValue::new(&mut current_config.stats_retention_days).clamp_range(1..=365));
                 });
             }
             
@@ -804,29 +803,29 @@ impl AppState {
                     
                     ui.horizontal(|ui| {
                         ui.label("Max total size (MB):");
-                        ui.add(egui::DragValue::new(&mut current_config.quota_max_size_mb).range(1..=1_000_000));
+                        ui.add(egui::DragValue::new(&mut current_config.quota_max_size_mb).clamp_range(1..=1_000_000));
                     });
                     
                     ui.horizontal(|ui| {
                         ui.label("Max total chunks:");
-                        ui.add(egui::DragValue::new(&mut current_config.quota_max_chunks).range(1..=10_000_000));
+                        ui.add(egui::DragValue::new(&mut current_config.quota_max_chunks).clamp_range(1..=10_000_000));
                     });
                     
                     ui.horizontal(|ui| {
                         ui.label("Max chunk size (MB):");
-                        ui.add(egui::DragValue::new(&mut current_config.quota_max_chunk_size_mb).range(1..=1000));
+                        ui.add(egui::DragValue::new(&mut current_config.quota_max_chunk_size_mb).clamp_range(1..=1000));
                     });
                     
                     ui.separator();
                     
                     ui.horizontal(|ui| {
                         ui.label("Max daily operations:");
-                        ui.add(egui::DragValue::new(&mut current_config.quota_max_daily_ops).range(1..=100_000));
+                        ui.add(egui::DragValue::new(&mut current_config.quota_max_daily_ops).clamp_range(1..=100_000));
                     });
                     
                     ui.horizontal(|ui| {
                         ui.label("Max hourly operations:");
-                        ui.add(egui::DragValue::new(&mut current_config.quota_max_hourly_ops).range(1..=10_000));
+                        ui.add(egui::DragValue::new(&mut current_config.quota_max_hourly_ops).clamp_range(1..=10_000));
                     });
                     
                     ui.separator();

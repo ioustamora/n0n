@@ -347,12 +347,13 @@ impl HsmProvider for AwsCloudHsmProvider {
     async fn generate_key(&self, algorithm: KeyAlgorithm, _policy_id: &str) -> Result<String, KeyManagementError> {
         // Simulate AWS CloudHSM key generation
         let key_id = format!("aws-hsm-{}", uuid::Uuid::new_v4());
+        let key_size = self.get_key_size(&algorithm);
         
         let metadata = HsmKeyMetadata {
             key_id: key_id.clone(),
             algorithm,
             created_at: Utc::now(),
-            key_size: self.get_key_size(&algorithm),
+            key_size,
             usage_count: 0,
             extractable: false,
             exportable: false,
@@ -492,12 +493,13 @@ impl AzureDedicatedHsmProvider {
 impl HsmProvider for AzureDedicatedHsmProvider {
     async fn generate_key(&self, algorithm: KeyAlgorithm, _policy_id: &str) -> Result<String, KeyManagementError> {
         let key_id = format!("azure-hsm-{}", uuid::Uuid::new_v4());
+        let key_size = self.get_key_size(&algorithm);
         
         let metadata = HsmKeyMetadata {
             key_id: key_id.clone(),
             algorithm,
             created_at: Utc::now(),
-            key_size: self.get_key_size(&algorithm),
+            key_size,
             usage_count: 0,
             extractable: false,
             exportable: false,
@@ -619,7 +621,7 @@ impl HsmProvider for SafeNetLunaProvider {
         
         let metadata = HsmKeyMetadata {
             key_id: key_id.clone(),
-            algorithm,
+            algorithm: algorithm.clone(),
             created_at: Utc::now(),
             key_size: self.get_key_size(&algorithm),
             usage_count: 0,

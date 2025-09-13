@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use anyhow::Result;
 use std::collections::HashMap;
 use redis::{Client, AsyncCommands, RedisError};
-use redis::aio::MultiplexedConnection as ConnectionManager;
+use redis::aio::MultiplexedConnection;
 use chrono::{DateTime, Utc};
 
 use crate::storage::backend::{StorageBackend, StorageType, ChunkMetadata, RedisConfig, StorageError};
@@ -10,7 +10,7 @@ use crate::storage::backend::{StorageBackend, StorageType, ChunkMetadata, RedisC
 /// Redis storage backend
 /// Stores chunks and metadata in Redis with optional TTL and cluster support
 pub struct RedisBackend {
-    manager: ConnectionManager,
+    manager: MultiplexedConnection,
     config: RedisConfig,
     key_prefix: String,
 }
@@ -30,8 +30,8 @@ impl RedisBackend {
                 message: format!("Invalid Redis URL: {}", e),
             })?;
         
-        // Create connection manager for connection pooling
-        let (manager, _) = ConnectionManager::new(client)
+        // Create multiplexed connection for async operations
+        let manager = client.get_multiplexed_async_connection()
             .await
             .map_err(|e| StorageError::ConnectionError {
                 message: format!("Failed to connect to Redis: {}", e),
@@ -71,9 +71,10 @@ impl RedisBackend {
             redis::ErrorKind::AuthenticationFailed => StorageError::AuthenticationError {
                 message: "Redis authentication failed".to_string(),
             },
-            redis::ErrorKind::ConnectionRefused => StorageError::ConnectionError {
-                message: "Redis connection refused".to_string(),
-            },
+            // ConnectionRefused variant not available in this Redis version
+            // redis::ErrorKind::ConnectionRefused => StorageError::ConnectionError {
+            //     message: "Redis connection refused".to_string(),
+            // },
             _ => StorageError::BackendError {
                 message: format!("Redis operation failed: {}", err),
             },
@@ -81,7 +82,7 @@ impl RedisBackend {
     }
     
     /// Get a mutable connection from the manager
-    async fn get_connection(&self) -> Result<ConnectionManager> {
+    async fn get_connection(&self) -> Result<MultiplexedConnection> {
         Ok(self.manager.clone())
     }
 }
@@ -109,10 +110,10 @@ impl StorageBackend for RedisBackend {
         
         // Set TTL on the list as well if configured
         if let Some(ttl) = self.config.ttl {
-            pipe.expire(&list_key, ttl as usize);
+            pipe.expire(&list_key, ttl as i64);
         }
         
-        match pipe.query_async(&mut conn).await {
+        match pipe.query_async::<()>(&mut conn).await {
             Ok(_) => Ok(chunk_hash.to_string()),
             Err(e) => Err(Self::map_redis_error(e).into()),
         }
@@ -133,7 +134,7 @@ impl StorageBackend for RedisBackend {
         let metadata_str = metadata_json.to_string();
         
         match if let Some(ttl) = self.config.ttl {
-            conn.set_ex(&metadata_key, &metadata_str, ttl).await
+            conn.set_ex::<_, _, ()>(&metadata_key, &metadata_str, ttl).await
         } else {
             conn.set(&metadata_key, &metadata_str).await
         } {
@@ -212,7 +213,7 @@ impl StorageBackend for RedisBackend {
         // Remove from recipient's list
         pipe.srem(&list_key, chunk_hash);
         
-        match pipe.query_async(&mut conn).await {
+        match pipe.query_async::<()>(&mut conn).await {
             Ok(_) => Ok(()),
             Err(e) => Err(Self::map_redis_error(e).into()),
         }
@@ -221,7 +222,7 @@ impl StorageBackend for RedisBackend {
     async fn test_connection(&self) -> Result<()> {
         let mut conn = self.get_connection().await?;
         
-        match conn.ping::<String>().await {
+        match redis::cmd("PING").query_async::<String>(&mut conn).await {
             Ok(_) => Ok(()),
             Err(e) => Err(StorageError::ConnectionError {
                 message: format!("Redis ping failed: {}", e),
@@ -276,7 +277,7 @@ impl StorageBackend for RedisBackend {
                 let mut conn = self.get_connection().await?;
                 
                 // Get server info
-                if let Ok(info_str) = conn.info::<String>("server").await {
+                if let Ok(info_str) = redis::cmd("INFO").arg("server").query_async::<String>(&mut conn).await {
                     // Parse Redis version from info string
                     for line in info_str.lines() {
                         if line.starts_with("redis_version:") {
@@ -288,7 +289,7 @@ impl StorageBackend for RedisBackend {
                 }
                 
                 // Get memory info
-                if let Ok(info_str) = conn.info::<String>("memory").await {
+                if let Ok(info_str) = redis::cmd("INFO").arg("memory").query_async::<String>(&mut conn).await {
                     for line in info_str.lines() {
                         if line.starts_with("used_memory_human:") {
                             let memory = line.split(':').nth(1).unwrap_or("unknown");
@@ -319,11 +320,30 @@ impl StorageBackend for RedisBackend {
     }
     
     /// Redis batch operations can be very efficient with pipelines
+    /// Optimized for large batch operations with memory management
     async fn save_chunks_batch(&self, recipient: &str, chunks: Vec<(String, Vec<u8>, ChunkMetadata)>) -> Result<Vec<String>> {
         if chunks.is_empty() {
             return Ok(Vec::new());
         }
         
+        // Process in optimal batch sizes to avoid memory issues
+        const OPTIMAL_BATCH_SIZE: usize = 100;
+        let mut all_results = Vec::with_capacity(chunks.len());
+        
+        // Process chunks in smaller batches for better memory management
+        for chunk_batch in chunks.chunks(OPTIMAL_BATCH_SIZE) {
+            let batch_results = self.save_chunks_batch_internal(recipient, chunk_batch).await?;
+            all_results.extend(batch_results);
+        }
+        
+        Ok(all_results)
+    }
+    
+}
+
+impl RedisBackend {
+    /// Internal batch processing for optimal performance
+    async fn save_chunks_batch_internal(&self, recipient: &str, chunks: &[(String, Vec<u8>, ChunkMetadata)]) -> Result<Vec<String>> {
         let mut conn = self.get_connection().await?;
         let mut pipe = redis::pipe();
         pipe.atomic();
@@ -359,15 +379,15 @@ impl StorageBackend for RedisBackend {
             // Add to recipient list
             pipe.sadd(&list_key, &hash);
             
-            results.push(hash);
+            results.push(hash.clone());
         }
         
         // Set TTL on the list if configured
         if let Some(ttl) = self.config.ttl {
-            pipe.expire(&list_key, ttl as usize);
+            pipe.expire(&list_key, ttl as i64);
         }
         
-        match pipe.query_async(&mut conn).await {
+        match pipe.query_async::<()>(&mut conn).await {
             Ok(_) => Ok(results),
             Err(e) => Err(Self::map_redis_error(e).into()),
         }

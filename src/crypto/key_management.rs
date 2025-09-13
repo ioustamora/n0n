@@ -117,6 +117,7 @@ pub enum ComplianceFramework {
     Hipaa,
     PciDss,
     Gdpr,
+    Soc2TypeII,
 }
 
 /// Key usage policy
@@ -427,10 +428,10 @@ impl KeyManagementSystem {
         let new_master_key = MasterKey {
             id: new_key_id.clone(),
             version: old_master_key.version + 1,
-            algorithm: old_master_key.algorithm,
+            algorithm: old_master_key.algorithm.clone(),
             key_material: new_key_material,
             created_at: Utc::now(),
-            expires_at: old_master_key.expires_at,
+            expires_at: old_master_key.expires_at.clone(),
             status: KeyStatus::Active,
             policy_id: old_master_key.policy_id.clone(),
             metadata: old_master_key.metadata.clone(),

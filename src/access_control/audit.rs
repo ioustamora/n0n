@@ -48,7 +48,7 @@ pub struct AuditEvent {
     pub user_agent: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum AuditEventType {
     Authentication,
     Authorization,
@@ -59,7 +59,7 @@ pub enum AuditEventType {
     SystemEvent,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum AuditResult {
     Success,
     Failure,

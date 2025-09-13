@@ -356,7 +356,7 @@ impl AccessControlService {
         let security_violations = self.check_security_violations(&request, &session).await?;
         
         let response = AccessControlResponse {
-            decision: if security_violations.is_empty() { final_decision } else { AccessDecision::Deny },
+            decision: if security_violations.is_empty() { final_decision.clone() } else { AccessDecision::Deny },
             reason: self.build_decision_reason(&final_decision, &security_violations),
             required_mfa: None,
             session_valid: true,
@@ -368,8 +368,10 @@ impl AccessControlService {
         // Update statistics
         let mut state = self.service_state.write().await;
         match response.decision {
-            AccessDecision::Allow => {},
+            AccessDecision::Permit => {},
             AccessDecision::Deny => state.policy_violations += 1,
+            AccessDecision::NotApplicable => {}, // No specific action for not applicable
+            AccessDecision::Indeterminate => state.policy_violations += 1, // Treat as violation
         }
         drop(state);
 
@@ -551,8 +553,8 @@ impl AccessControlService {
         policy: AccessDecision,
     ) -> Result<AccessDecision, AccessControlError> {
         // All systems must allow access
-        if rbac && abac == AccessDecision::Allow && policy == AccessDecision::Allow {
-            Ok(AccessDecision::Allow)
+        if rbac && abac == AccessDecision::Permit && policy == AccessDecision::Permit {
+            Ok(AccessDecision::Permit)
         } else {
             Ok(AccessDecision::Deny)
         }
@@ -572,7 +574,7 @@ impl AccessControlService {
 
     fn build_decision_reason(&self, decision: &AccessDecision, violations: &[String]) -> String {
         match decision {
-            AccessDecision::Allow if violations.is_empty() => "Access granted".to_string(),
+            AccessDecision::Permit if violations.is_empty() => "Access granted".to_string(),
             AccessDecision::Deny if violations.is_empty() => "Access denied by policy".to_string(),
             _ => format!("Access denied: {}", violations.join(", ")),
         }

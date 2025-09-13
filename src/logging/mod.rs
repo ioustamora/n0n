@@ -71,7 +71,7 @@ pub fn init_logging(config: LoggingConfig) -> Result<()> {
 }
 
 fn setup_tracing(config: LoggingConfig) -> Result<()> {
-    let mut layers = Vec::new();
+    let mut _layers: Vec<Box<dyn std::any::Any>> = Vec::new();
     
     // Console layer
     let console_layer = tracing_subscriber::fmt::layer()
@@ -90,7 +90,7 @@ fn setup_tracing(config: LoggingConfig) -> Result<()> {
             file_path.file_name().and_then(|n| n.to_str()).unwrap_or("n0n.log")
         );
         
-        let file_layer = tracing_subscriber::fmt::layer()
+        let file_layer = tracing_subscriber::fmt::layer::<Registry>()
             .with_writer(file_appender)
             .with_span_events(FmtSpan::CLOSE)
             .with_timer(UtcTime::rfc_3339())
@@ -117,16 +117,16 @@ fn setup_tracing(config: LoggingConfig) -> Result<()> {
     let registry = Registry::default()
         .with(env_filter);
     
-    // Add console layer
-    let registry = if config.structured {
-        registry.with(console_layer.json())
+    // Add console layer based on configuration
+    if config.structured {
+        let console_layer = console_layer.json().with_ansi(false);
+        registry.with(console_layer).init();
     } else {
-        registry.with(console_layer)
-    };
+        let console_layer = console_layer.with_ansi(true);
+        registry.with(console_layer).init();
+    }
     
-    // Initialize the subscriber
-    registry.init();
-    
+    // Return early since init() is called above
     tracing::info!(
         version = env!("CARGO_PKG_VERSION"),
         level = ?config.level,
@@ -230,27 +230,42 @@ pub fn log_error_with_context<E: std::fmt::Display>(
     operation: &str,
     context: &[(&str, &dyn std::fmt::Debug)],
 ) {
-    let mut event = tracing::error!(
-        error = %error,
-        operation = operation,
-        category = "error"
-    );
+    let mut fields = vec![
+        ("error", format!("{}", error)),
+        ("operation", operation.to_string()),
+        ("category", "error".to_string()),
+    ];
     
     for (key, value) in context {
-        event = event.with_field(key, format!("{:?}", value));
+        fields.push((key, format!("{:?}", value)));
     }
+    
+    // Log with all collected fields
+    tracing::error!(
+        error = %error,
+        operation = operation,
+        category = "error",
+        context = ?fields
+    );
 }
 
 /// Security event logging
 pub fn log_security_event(event_type: &str, details: &[(&str, &dyn std::fmt::Debug)]) {
-    let mut event = tracing::warn!(
-        event_type = event_type,
-        category = "security"
-    );
+    let mut fields = vec![
+        ("event_type", event_type.to_string()),
+        ("category", "security".to_string()),
+    ];
     
     for (key, value) in details {
-        event = event.with_field(key, format!("{:?}", value));
+        fields.push((key, format!("{:?}", value)));
     }
+    
+    // Log with all collected fields
+    tracing::warn!(
+        event_type = event_type,
+        category = "security",
+        details = ?fields
+    );
 }
 
 #[cfg(test)]

@@ -67,6 +67,7 @@ impl AppState {
             
             // Get current migration state or create default
             let migration_state = self.get_or_create_migration_state();
+            let current_source = migration_state.source_backend_type;
             
             egui::ComboBox::from_label("")
                 .selected_text(format!("{:?}", migration_state.source_backend_type))
@@ -75,9 +76,12 @@ impl AppState {
                         ui.selectable_value(&mut migration_state.source_backend_type, backend_type, format!("{:?}", backend_type));
                     }
                 });
-                
-            if ui.button("Test Source").clicked() {
-                self.test_migration_backend(migration_state.source_backend_type, true);
+            
+            // Test button needs to be outside the mutable borrow
+            let should_test = ui.button("Test Source").clicked();
+            drop(migration_state); // Explicitly drop the borrow
+            if should_test {
+                self.test_migration_backend(current_source, true);
             }
         });
         
@@ -86,6 +90,7 @@ impl AppState {
             ui.label("Destination Backend:");
             
             let migration_state = self.get_or_create_migration_state();
+            let current_dest = migration_state.dest_backend_type;
             
             egui::ComboBox::from_label("")
                 .selected_text(format!("{:?}", migration_state.dest_backend_type))
@@ -94,9 +99,12 @@ impl AppState {
                         ui.selectable_value(&mut migration_state.dest_backend_type, backend_type, format!("{:?}", backend_type));
                     }
                 });
-                
-            if ui.button("Test Destination").clicked() {
-                self.test_migration_backend(migration_state.dest_backend_type, false);
+            
+            // Test button needs to be outside the mutable borrow
+            let should_test = ui.button("Test Destination").clicked();
+            drop(migration_state); // Explicitly drop the borrow
+            if should_test {
+                self.test_migration_backend(current_dest, false);
             }
         });
         
@@ -132,24 +140,24 @@ impl AppState {
             
             ui.horizontal(|ui| {
                 ui.label("Batch Size:");
-                ui.add(egui::DragValue::new(&mut migration_state.batch_size).range(1..=1000));
+                ui.add(egui::DragValue::new(&mut migration_state.batch_size).clamp_range(1..=1000));
                 ui.label("chunks per batch");
             });
             
             ui.horizontal(|ui| {
                 ui.label("Concurrency:");
-                ui.add(egui::DragValue::new(&mut migration_state.concurrency).range(1..=50));
+                ui.add(egui::DragValue::new(&mut migration_state.concurrency).clamp_range(1..=50));
                 ui.label("parallel operations");
             });
             
             ui.horizontal(|ui| {
                 ui.label("Max Retries:");
-                ui.add(egui::DragValue::new(&mut migration_state.max_retries).range(0..=10));
+                ui.add(egui::DragValue::new(&mut migration_state.max_retries).clamp_range(0..=10));
             });
             
             ui.horizontal(|ui| {
                 ui.label("Retry Delay (ms):");
-                ui.add(egui::DragValue::new(&mut migration_state.retry_delay_ms).range(100..=10000));
+                ui.add(egui::DragValue::new(&mut migration_state.retry_delay_ms).clamp_range(100..=10000));
             });
             
             ui.checkbox(&mut migration_state.verify_integrity, "Verify data integrity during migration");
@@ -169,27 +177,34 @@ impl AppState {
         ui.horizontal(|ui| {
             let migration_state = self.get_or_create_migration_state();
             
+            // Get values we need before calling other methods
+            let migration_running = migration_state.migration_running;
+            let source_type = migration_state.source_backend_type;
+            let dest_type = migration_state.dest_backend_type;
+            drop(migration_state); // Explicitly drop the borrow
+            
             // Estimate migration
             if ui.button("📊 Estimate Migration").clicked() {
                 self.estimate_migration();
             }
             
             // Start migration
-            let can_start = !migration_state.migration_running 
-                && self.storage_configs.contains_key(&migration_state.source_backend_type)
-                && self.storage_configs.contains_key(&migration_state.dest_backend_type);
+            let can_start = !migration_running 
+                && self.storage_configs.contains_key(&source_type)
+                && self.storage_configs.contains_key(&dest_type);
                 
             if ui.add_enabled(can_start, egui::Button::new("🚀 Start Migration")).clicked() {
                 self.start_migration();
             }
             
             // Cancel migration
-            if ui.add_enabled(migration_state.migration_running, egui::Button::new("⏹️ Cancel Migration")).clicked() {
+            if ui.add_enabled(migration_running, egui::Button::new("⏹️ Cancel Migration")).clicked() {
                 self.cancel_migration();
             }
             
             // Clear logs
             if ui.button("🧹 Clear Logs").clicked() {
+                let mut migration_state = self.get_or_create_migration_state();
                 migration_state.migration_logs.clear();
             }
         });
@@ -355,13 +370,16 @@ impl AppState {
     /// Estimate migration time and resources
     fn estimate_migration(&mut self) {
         let migration_state = self.get_or_create_migration_state();
+        let source_type = migration_state.source_backend_type;
+        let dest_type = migration_state.dest_backend_type;
+        drop(migration_state); // Explicitly drop the borrow
         
         if let (Some(source_config), Some(dest_config)) = (
-            self.storage_configs.get(&migration_state.source_backend_type),
-            self.storage_configs.get(&migration_state.dest_backend_type)
+            self.storage_configs.get(&source_type),
+            self.storage_configs.get(&dest_type)
         ) {
-            let source_storage_config = self.convert_gui_to_storage_config(migration_state.source_backend_type, source_config);
-            let dest_storage_config = self.convert_gui_to_storage_config(migration_state.dest_backend_type, dest_config);
+            let source_storage_config = self.convert_gui_to_storage_config(source_type, source_config);
+            let dest_storage_config = self.convert_gui_to_storage_config(dest_type, dest_config);
             
             self.log("Estimating migration...");
             
@@ -388,16 +406,32 @@ impl AppState {
     
     /// Start the migration process
     fn start_migration(&mut self) {
-        let migration_state = self.get_or_create_migration_state();
-        
+        // Extract all needed values from migration_state before other method calls
+        let (source_type, dest_type, migration_strategy, batch_size, concurrency,
+             verify_integrity, delete_source, resume_from_recipient, max_retries, retry_delay_ms) = {
+            let migration_state = self.get_or_create_migration_state();
+            (
+                migration_state.source_backend_type,
+                migration_state.dest_backend_type,
+                migration_state.migration_strategy.clone(),
+                migration_state.batch_size,
+                migration_state.concurrency,
+                migration_state.verify_integrity,
+                migration_state.delete_source,
+                migration_state.resume_from_recipient.clone(),
+                migration_state.max_retries,
+                migration_state.retry_delay_ms,
+            )
+        };
+
         if let (Some(source_config), Some(dest_config)) = (
-            self.storage_configs.get(&migration_state.source_backend_type),
-            self.storage_configs.get(&migration_state.dest_backend_type)
+            self.storage_configs.get(&source_type),
+            self.storage_configs.get(&dest_type)
         ) {
-            let source_storage_config = self.convert_gui_to_storage_config(migration_state.source_backend_type, source_config);
-            let dest_storage_config = self.convert_gui_to_storage_config(migration_state.dest_backend_type, dest_config);
+            let source_storage_config = self.convert_gui_to_storage_config(source_type, source_config);
+            let dest_storage_config = self.convert_gui_to_storage_config(dest_type, dest_config);
             
-            let strategy = match migration_state.migration_strategy.as_str() {
+            let strategy = match migration_strategy.as_str() {
                 "StreamingMigration" => MigrationStrategy::StreamingMigration,
                 "Synchronize" => MigrationStrategy::Synchronize,
                 "VerifyOnly" => MigrationStrategy::VerifyOnly,
@@ -408,21 +442,26 @@ impl AppState {
                 source: source_storage_config,
                 destination: dest_storage_config,
                 strategy,
-                batch_size: migration_state.batch_size as usize,
-                concurrency: migration_state.concurrency as usize,
-                verify_integrity: migration_state.verify_integrity,
-                delete_source: migration_state.delete_source,
-                resume_from_recipient: if migration_state.resume_from_recipient.is_empty() { 
+                batch_size: batch_size as usize,
+                concurrency: concurrency as usize,
+                verify_integrity,
+                delete_source,
+                resume_from_recipient: if resume_from_recipient.is_empty() { 
                     None 
                 } else { 
-                    Some(migration_state.resume_from_recipient.clone()) 
+                    Some(resume_from_recipient) 
                 },
-                max_retries: migration_state.max_retries,
-                retry_delay_ms: migration_state.retry_delay_ms,
+                max_retries,
+                retry_delay_ms,
             };
-            
+
+            // Set migration running flag
+            {
+                let mut migration_state = self.get_or_create_migration_state();
+                migration_state.migration_running = true;
+            }
+
             self.log("Starting migration...");
-            migration_state.migration_running = true;
             
             let logs = self.logs.clone();
             tokio::spawn(async move {

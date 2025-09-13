@@ -32,10 +32,13 @@ pub enum ImportExportError {
     
     #[error("Version mismatch: expected {expected}, found {found}")]
     VersionMismatch { expected: String, found: String },
+    
+    #[error("ZIP error: {0}")]
+    ZipError(#[from] zip::result::ZipError),
 }
 
 /// Export format options
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum ExportFormat {
     Json,
     Yaml,
@@ -315,7 +318,7 @@ impl ConfigExporter {
             salt: general_purpose::STANDARD.encode(&salt.0),
             nonce: general_purpose::STANDARD.encode(&nonce.0),
             ciphertext: general_purpose::STANDARD.encode(&ciphertext),
-            iterations: pwhash::OPSLIMIT_INTERACTIVE as u32,
+            iterations: pwhash::OPSLIMIT_INTERACTIVE.0 as u32,
         };
         
         Ok(serde_json::to_string_pretty(&encrypted_bundle)?)
@@ -413,10 +416,13 @@ impl ConfigImporter {
             .map_err(|e| ImportExportError::ArchiveError(e.to_string()))?;
         
         // Read metadata
-        let mut metadata_file = archive.by_name("metadata.json")
-            .map_err(|e| ImportExportError::ArchiveError(format!("Missing metadata: {}", e)))?;
-        let mut metadata_content = String::new();
-        metadata_file.read_to_string(&mut metadata_content)?;
+        let metadata_content = {
+            let mut metadata_file = archive.by_name("metadata.json")
+                .map_err(|e| ImportExportError::ArchiveError(format!("Missing metadata: {}", e)))?;
+            let mut content = String::new();
+            metadata_file.read_to_string(&mut content)?;
+            content
+        };
         let metadata: BundleMetadata = serde_json::from_str(&metadata_content)?;
         
         // Collect all files in one pass to avoid multiple borrows

@@ -181,8 +181,8 @@ impl PerformanceProfiler {
             return PerformanceSummary::default();
         }
 
-        let mut total_cpu = 0.0;
-        let mut max_cpu = 0.0;
+        let mut total_cpu = 0.0f64;
+        let mut max_cpu = 0.0f64;
         let mut total_memory = 0u64;
         let mut max_memory = 0u64;
         let mut total_disk_reads = 0u64;

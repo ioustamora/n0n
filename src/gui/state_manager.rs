@@ -3,7 +3,7 @@ use std::sync::{Arc, RwLock};
 use serde::{Serialize, Deserialize};
 use anyhow::Result;
 
-use crate::config::{AppConfig, GuiConfig};
+use crate::config::AppConfig;
 use crate::storage::backend::StorageType;
 
 /// Central state management system for the GUI

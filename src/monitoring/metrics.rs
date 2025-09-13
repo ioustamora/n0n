@@ -92,6 +92,7 @@ pub struct TimeSeriesPoint {
     pub value: MetricValue,
 }
 
+#[derive(Serialize, Deserialize)]
 struct MetricsStore {
     metrics: HashMap<String, TimeSeriesData>,
     system_metrics: SystemMetrics,
@@ -99,6 +100,7 @@ struct MetricsStore {
 }
 
 #[derive(Debug, Clone, Default)]
+#[derive(Serialize, Deserialize)]
 struct SystemMetrics {
     cpu_usage: f64,
     memory_usage: f64,

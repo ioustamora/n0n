@@ -400,7 +400,13 @@ impl AlertManager {
 
     fn generate_alert_fingerprint(&self, rule: &AlertRule, _current_value: f64) -> String {
         // Generate a stable fingerprint for alert grouping
-        format!("{:x}", std::collections::hash_map::DefaultHasher::default())
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+        
+        let mut hasher = DefaultHasher::new();
+        rule.name.hash(&mut hasher);
+        rule.metric_query.hash(&mut hasher);
+        format!("{:x}", hasher.finish())
     }
 
     async fn send_alert_notifications(&self, alert: &Alert) -> Result<(), AlertError> {

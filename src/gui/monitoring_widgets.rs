@@ -94,7 +94,7 @@ impl MonitoringDashboardWidget {
             
             if self.auto_refresh {
                 ui.label("every");
-                ui.add(egui::DragValue::new(&mut self.refresh_interval_seconds).range(5..=300).suffix("s"));
+                ui.add(egui::DragValue::new(&mut self.refresh_interval_seconds).clamp_range(5..=300).suffix("s"));
             }
             
             ui.separator();
@@ -446,7 +446,7 @@ impl MonitoringDashboardWidget {
                 ui.text_edit_singleline(&mut self.log_filters.search_text);
                 ui.label("Search");
                 
-                ui.add(egui::DragValue::new(&mut self.log_filters.max_entries).range(10..=1000).prefix("Show ").suffix(" entries"));
+                ui.add(egui::DragValue::new(&mut self.log_filters.max_entries).clamp_range(10..=1000).prefix("Show ").suffix(" entries"));
             });
         });
 

@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use anyhow::{Result, anyhow};
 use std::collections::HashMap;
 use std::sync::Arc;
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use futures::future::join_all;
 
 use crate::storage::backend::{StorageBackend, StorageType, ChunkMetadata, ReplicationConfig, ConsistencyLevel, ReplicationStrategy, StorageError};
@@ -133,16 +133,19 @@ impl StorageBackend for MultiCloudBackend {
                 let recipient = recipient.to_string();
                 let chunk_hash = chunk_hash.to_string();
                 let data = data.to_vec();
-                
+                let backup_backends = self.replica_backends.clone();
+
                 tokio::spawn(async move {
-                    let _results = self.replicate_to_backups(|backend| {
+                    // Replicate to backup backends
+                    let futures = backup_backends.into_iter().map(|backend| {
                         let recipient = recipient.clone();
                         let chunk_hash = chunk_hash.clone();
                         let data = data.clone();
                         async move {
                             backend.save_chunk(&recipient, &chunk_hash, &data).await.map(|_| ())
                         }
-                    }).await;
+                    });
+                    let _results = join_all(futures).await;
                     // Log failures but don't fail the operation
                 });
                 
@@ -235,16 +238,19 @@ impl StorageBackend for MultiCloudBackend {
                 let recipient = recipient.to_string();
                 let chunk_hash = chunk_hash.to_string();
                 let metadata = metadata.clone();
-                
+                let backup_backends = self.replica_backends.clone();
+
                 tokio::spawn(async move {
-                    let _results = self.replicate_to_backups(|backend| {
+                    // Replicate to backup backends
+                    let futures = backup_backends.into_iter().map(|backend| {
                         let recipient = recipient.clone();
                         let chunk_hash = chunk_hash.clone();
                         let metadata = metadata.clone();
                         async move {
                             backend.save_metadata(&recipient, &chunk_hash, &metadata).await
                         }
-                    }).await;
+                    });
+                    let _results = join_all(futures).await;
                 });
                 
                 Ok(())

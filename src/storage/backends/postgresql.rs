@@ -2,7 +2,6 @@ use async_trait::async_trait;
 use anyhow::Result;
 use std::collections::HashMap;
 use sqlx::{PgPool, Row, Error as SqlxError};
-use chrono::DateTime;
 
 use crate::storage::backend::{StorageBackend, StorageType, ChunkMetadata, PostgreSQLConfig, StorageError};
 

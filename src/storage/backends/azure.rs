@@ -4,7 +4,6 @@ use std::collections::HashMap;
 use chrono::{DateTime, Utc};
 use azure_storage::prelude::*;
 use azure_storage_blobs::prelude::*;
-use azure_core::auth::TokenCredential;
 
 use crate::storage::backend::{StorageBackend, StorageType, ChunkMetadata, AzureConfig, StorageError};
 
@@ -55,11 +54,12 @@ impl AzureBackend {
 
         let path_prefix = config.path_prefix.clone()
             .unwrap_or_else(|| "n0n".to_string());
+        let container = config.container.clone();
 
         Ok(Self {
             client,
             config,
-            container: config.container.clone(),
+            container,
             path_prefix,
         })
     }
@@ -114,7 +114,7 @@ impl StorageBackend for AzureBackend {
             .container_client(&self.container)
             .blob_client(&blob_name);
 
-        match blob_client.put_block_blob(data)
+        match blob_client.put_block_blob(data.to_vec())
             .content_type("application/octet-stream")
             .await {
             Ok(_) => Ok(chunk_hash.to_string()),
@@ -138,7 +138,7 @@ impl StorageBackend for AzureBackend {
             .container_client(&self.container)
             .blob_client(&blob_name);
 
-        match blob_client.put_block_blob(&metadata_bytes)
+        match blob_client.put_block_blob(metadata_bytes)
             .content_type("application/json")
             .await {
             Ok(_) => Ok(()),
@@ -304,7 +304,7 @@ impl StorageBackend for AzureBackend {
                 let container_client = self.client.container_client(&self.container);
                 let test_blob_client = container_client.blob_client(&test_blob);
 
-                match test_blob_client.put_block_blob(test_data)
+                match test_blob_client.put_block_blob(test_data.to_vec())
                     .content_type("text/plain")
                     .await {
                     Ok(_) => {
@@ -350,8 +350,8 @@ impl StorageBackend for AzureBackend {
             return Ok(Vec::new());
         }
 
-        let mut handles = Vec::new();
-        let mut results = Vec::new();
+        let mut handles: Vec<tokio::task::JoinHandle<Result<String>>> = Vec::new();
+        let mut results: Vec<String> = Vec::new();
 
         // Process in smaller batches to avoid overwhelming the API
         const BATCH_SIZE: usize = 20;

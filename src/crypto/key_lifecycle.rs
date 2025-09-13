@@ -689,8 +689,9 @@ impl KeyLifecycleManager {
                 
                 // Clean up old events
                 let mut events_guard = events.write().await;
-                if events_guard.len() > config.max_lifecycle_events {
-                    events_guard.drain(0..events_guard.len() - config.max_lifecycle_events);
+                let current_len = events_guard.len();
+                if current_len > config.max_lifecycle_events {
+                    events_guard.drain(0..current_len - config.max_lifecycle_events);
                 }
                 
                 // Clean up expired keys (placeholder - would need KMS integration)
@@ -748,8 +749,9 @@ impl KeyLifecycleManager {
         events.push(event);
 
         // Limit events to max configured
-        if events.len() > self.config.max_lifecycle_events {
-            events.drain(0..events.len() - self.config.max_lifecycle_events);
+        let current_len = events.len();
+        if current_len > self.config.max_lifecycle_events {
+            events.drain(0..current_len - self.config.max_lifecycle_events);
         }
     }
 

@@ -74,6 +74,7 @@ digest = "0.10"
 hmac = "0.12"
 zeroize = { version = "1.7", features = ["zeroize_derive"] }
 parking_lot = "0.12"
+tempfile = "3.6"
 # Windows-specific dependencies
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = ["wincrypt", "winnt"] }

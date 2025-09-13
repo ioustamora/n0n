@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use serde::{Serialize, Deserialize};
 
 /// Storage backend types supported by the system
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 pub enum StorageType {
     #[default]
     Local,
@@ -322,4 +322,171 @@ pub enum StorageError {
     
     #[error("Deserialization failed: {0}")]
     DeserializationFailed(String),
+}
+
+/// Retry wrapper for storage backends to handle transient failures
+pub struct RetryableBackend<T: StorageBackend> {
+    inner: std::sync::Arc<T>,
+    max_retries: u32,
+    retry_delay_ms: u64,
+}
+
+impl<T: StorageBackend> RetryableBackend<T> {
+    pub fn new(inner: T, max_retries: u32, retry_delay_ms: u64) -> Self {
+        Self {
+            inner: std::sync::Arc::new(inner),
+            max_retries,
+            retry_delay_ms,
+        }
+    }
+    
+    async fn retry_operation<F, R>(&self, operation: F) -> Result<R>
+    where
+        F: Fn() -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<R>> + Send + 'static>>,
+    {
+        let mut last_error = None;
+        
+        for attempt in 0..=self.max_retries {
+            match operation().await {
+                Ok(result) => return Ok(result),
+                Err(err) => {
+                    last_error = Some(err);
+                    if attempt < self.max_retries {
+                        log::debug!("Storage operation failed (attempt {}), retrying in {}ms", 
+                                    attempt + 1, self.retry_delay_ms);
+                        tokio::time::sleep(tokio::time::Duration::from_millis(self.retry_delay_ms)).await;
+                    }
+                }
+            }
+        }
+        
+        Err(last_error.unwrap())
+    }
+}
+
+#[async_trait]
+impl<T: StorageBackend + 'static> StorageBackend for RetryableBackend<T> {
+    async fn save_chunk(&self, recipient: &str, chunk_hash: &str, data: &[u8]) -> Result<String> {
+        let recipient = recipient.to_string();
+        let chunk_hash = chunk_hash.to_string();
+        let data = data.to_vec();
+
+        let inner = self.inner.clone();
+        self.retry_operation(move || {
+            let recipient = recipient.clone();
+            let chunk_hash = chunk_hash.clone();
+            let data = data.clone();
+            let inner = inner.clone();
+            Box::pin(async move {
+                inner.save_chunk(&recipient, &chunk_hash, &data).await
+            })
+        }).await
+    }
+    
+    async fn save_metadata(&self, recipient: &str, chunk_hash: &str, metadata: &ChunkMetadata) -> Result<()> {
+        let recipient = recipient.to_string();
+        let chunk_hash = chunk_hash.to_string();
+        let metadata = metadata.clone();
+        
+        let inner = self.inner.clone();
+        self.retry_operation(move || {
+            let recipient = recipient.clone();
+            let chunk_hash = chunk_hash.clone();
+            let metadata = metadata.clone();
+            let inner = inner.clone();
+            Box::pin(async move {
+                inner.save_metadata(&recipient, &chunk_hash, &metadata).await
+            })
+        }).await
+    }
+    
+    async fn load_chunk(&self, recipient: &str, chunk_hash: &str) -> Result<Vec<u8>> {
+        let recipient = recipient.to_string();
+        let chunk_hash = chunk_hash.to_string();
+        
+        let inner = self.inner.clone();
+        self.retry_operation(move || {
+            let recipient = recipient.clone();
+            let chunk_hash = chunk_hash.clone();
+            let inner = inner.clone();
+            Box::pin(async move {
+                inner.load_chunk(&recipient, &chunk_hash).await
+            })
+        }).await
+    }
+    
+    async fn load_metadata(&self, recipient: &str, chunk_hash: &str) -> Result<ChunkMetadata> {
+        let recipient = recipient.to_string();
+        let chunk_hash = chunk_hash.to_string();
+        
+        let inner = self.inner.clone();
+        self.retry_operation(move || {
+            let recipient = recipient.clone();
+            let chunk_hash = chunk_hash.clone();
+            let inner = inner.clone();
+            Box::pin(async move {
+                inner.load_metadata(&recipient, &chunk_hash).await
+            })
+        }).await
+    }
+    
+    async fn list_chunks(&self, recipient: &str) -> Result<Vec<String>> {
+        let recipient = recipient.to_string();
+        
+        let inner = self.inner.clone();
+        self.retry_operation(move || {
+            let recipient = recipient.clone();
+            let inner = inner.clone();
+            Box::pin(async move {
+                inner.list_chunks(&recipient).await
+            })
+        }).await
+    }
+    
+    async fn delete_chunk(&self, recipient: &str, chunk_hash: &str) -> Result<()> {
+        let recipient = recipient.to_string();
+        let chunk_hash = chunk_hash.to_string();
+        
+        let inner = self.inner.clone();
+        self.retry_operation(move || {
+            let recipient = recipient.clone();
+            let chunk_hash = chunk_hash.clone();
+            let inner = inner.clone();
+            Box::pin(async move {
+                inner.delete_chunk(&recipient, &chunk_hash).await
+            })
+        }).await
+    }
+    
+    async fn test_connection(&self) -> Result<()> {
+        let inner = self.inner.clone();
+        self.retry_operation(move || {
+            let inner = inner.clone();
+            Box::pin(async move {
+                inner.test_connection().await
+            })
+        }).await
+    }
+    
+    fn backend_type(&self) -> StorageType {
+        self.inner.backend_type()
+    }
+    
+    fn get_info(&self) -> HashMap<String, String> {
+        let mut info = self.inner.get_info();
+        info.insert("retry_wrapper".to_string(), "enabled".to_string());
+        info.insert("max_retries".to_string(), self.max_retries.to_string());
+        info.insert("retry_delay_ms".to_string(), self.retry_delay_ms.to_string());
+        info
+    }
+    
+    async fn health_check(&self) -> Result<HashMap<String, String>> {
+        let inner = self.inner.clone();
+        self.retry_operation(move || {
+            let inner = inner.clone();
+            Box::pin(async move {
+                inner.health_check().await
+            })
+        }).await
+    }
 }

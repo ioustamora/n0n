@@ -149,6 +149,12 @@ impl AuditLogger {
         source_ip: Option<String>,
         details: serde_json::Value,
     ) -> Result<()> {
+        let severity = match result {
+            AuditResult::Success => AuditSeverity::Low,
+            AuditResult::Failure => AuditSeverity::Medium,
+            _ => AuditSeverity::Low,
+        };
+        
         let entry = AuditEntry {
             timestamp: Utc::now(),
             event_type,
@@ -158,11 +164,7 @@ impl AuditLogger {
             details,
             source_ip,
             session_id: None,
-            severity: match result {
-                AuditResult::Success => AuditSeverity::Low,
-                AuditResult::Failure => AuditSeverity::Medium,
-                _ => AuditSeverity::Low,
-            },
+            severity,
         };
         
         self.log_event(entry).await
@@ -223,6 +225,12 @@ impl AuditLogger {
             detail_map.insert("algorithm".to_string(), serde_json::Value::String(alg));
         }
         
+        let severity = match event_type {
+            AuditEventType::KeyDestroyed => AuditSeverity::High,
+            AuditEventType::KeyGenerated | AuditEventType::KeyRotated => AuditSeverity::Medium,
+            _ => AuditSeverity::Low,
+        };
+        
         let entry = AuditEntry {
             timestamp: Utc::now(),
             event_type,
@@ -232,11 +240,7 @@ impl AuditLogger {
             details: serde_json::Value::Object(detail_map),
             source_ip: None,
             session_id: None,
-            severity: match event_type {
-                AuditEventType::KeyDestroyed => AuditSeverity::High,
-                AuditEventType::KeyGenerated | AuditEventType::KeyRotated => AuditSeverity::Medium,
-                _ => AuditSeverity::Low,
-            },
+            severity,
         };
         
         self.log_event(entry).await

@@ -349,6 +349,9 @@ impl HealthChecker {
             ));
         }
 
+        // Get status before potentially consuming response
+        let status = response.status();
+        
         // Check response body if specified
         if let Some(expected_body) = &check.config.expected_body {
             let body = response.text().await
@@ -361,7 +364,7 @@ impl HealthChecker {
             }
         }
 
-        Ok(format!("HTTP check successful: {}", response.status()))
+        Ok(format!("HTTP check successful: {}", status))
     }
 
     async fn run_tcp_check(&self, check: &HealthCheck) -> Result<String, HealthError> {
@@ -454,13 +457,14 @@ impl HealthChecker {
         let mut status = self.health_status.write().await;
         
         if let Some(component) = status.get_mut(&check.id) {
-            // Update statistics
+            // Update statistics (using references to avoid partial moves)
             component.total_checks += 1;
             component.last_checked = result.timestamp;
             component.response_time_ms = result.response_time_ms;
             component.message = result.message.clone();
+            let result_status = result.status.clone();
 
-            match result.status {
+            match result_status {
                 HealthStatus::Healthy | HealthStatus::Degraded => {
                     component.successful_checks += 1;
                     component.consecutive_successes += 1;
@@ -469,9 +473,9 @@ impl HealthChecker {
                     // Check if component should recover
                     if component.status == HealthStatus::Unhealthy 
                         && component.consecutive_successes >= self.config.recovery_threshold_successes {
-                        component.status = result.status;
+                        component.status = result_status;
                     } else if component.status != HealthStatus::Unhealthy {
-                        component.status = result.status;
+                        component.status = result_status;
                     }
                 }
                 HealthStatus::Unhealthy => {

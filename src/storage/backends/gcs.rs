@@ -9,9 +9,8 @@ use google_cloud_storage::http::objects::{
     get::GetObjectRequest,
     delete::DeleteObjectRequest,
     list::ListObjectsRequest,
-    Object,
 };
-use google_cloud_auth::credentials::CredentialsFile;
+use google_cloud_storage::client::google_cloud_auth::credentials::CredentialsFile;
 use serde_json;
 
 use crate::storage::backend::{StorageBackend, StorageType, ChunkMetadata, GcsConfig, StorageError};
@@ -43,7 +42,7 @@ impl GcsBackend {
         // Setup authentication
         let client_config = if let Some(service_account_key) = &config.service_account_key {
             // Use service account key directly
-            let credentials: CredentialsFile = serde_json::from_str(service_account_key)
+            let credentials = serde_json::from_str::<CredentialsFile>(service_account_key)
                 .map_err(|e| StorageError::AuthenticationError {
                     message: format!("Invalid service account key: {}", e),
                 })?;
@@ -70,10 +69,12 @@ impl GcsBackend {
         let path_prefix = config.path_prefix.clone()
             .unwrap_or_else(|| "n0n".to_string());
 
+        let bucket = config.bucket.clone();
+        
         Ok(Self {
             client,
             config,
-            bucket: config.bucket.clone(),
+            bucket,
             path_prefix,
         })
     }
@@ -243,12 +244,11 @@ impl StorageBackend for GcsBackend {
                 
                 if let Some(objects) = list_response.items {
                     for object in objects {
-                        if let Some(name) = &object.name {
-                            // Extract chunk hash from object name
-                            // Format: {prefix}/chunks/{recipient}/{chunk_hash}
-                            if let Some(hash) = name.strip_prefix(&prefix) {
-                                chunk_hashes.push(hash.to_string());
-                            }
+                        let name = &object.name;
+                        // Extract chunk hash from object name
+                        // Format: {prefix}/chunks/{recipient}/{chunk_hash}
+                        if let Some(hash) = name.strip_prefix(&prefix) {
+                            chunk_hashes.push(hash.to_string());
                         }
                     }
                 }
@@ -404,8 +404,8 @@ impl StorageBackend for GcsBackend {
             return Ok(Vec::new());
         }
 
-        let mut handles = Vec::new();
-        let mut results = Vec::new();
+        let mut handles: Vec<tokio::task::JoinHandle<Result<String>>> = Vec::new();
+        let mut results: Vec<String> = Vec::new();
 
         // Process in smaller batches to avoid overwhelming the API
         const BATCH_SIZE: usize = 10;

@@ -5,8 +5,9 @@ use std::sync::atomic::{AtomicUsize, AtomicBool};
 use std::io::{Read, Write};
 use std::net::TcpStream;
 use ssh2::Session;
+use base64::{Engine as _, engine::general_purpose};
 // Removed unused imports: chunk, ChunkMeta, crypto
-// Removed unused imports: base64, serde_json, rand
+// Removed unused imports: serde_json, rand
 
 /// Connect to SFTP server with password authentication
 pub fn sftp_connect(host: &str, username: &str, password: &str) -> Result<(ssh2::Sftp, Session, TcpStream)> {
@@ -39,7 +40,7 @@ pub fn sftp_connect_auth(
         if let Some((hostkey, _typ)) = sess.host_key() {
             use sha2::{Digest, Sha256};
             let fp = Sha256::digest(hostkey);
-            let got_b64 = base64::engine::general_purpose::STANDARD.encode(fp);
+            let got_b64 = general_purpose::STANDARD.encode(fp);
             // Allow optional padding differences by trimming '=' on both sides
             let exp_trim = expected_b64.trim_end_matches('=');
             let got_trim = got_b64.trim_end_matches('=');

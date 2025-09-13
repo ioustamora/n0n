@@ -3,7 +3,7 @@ use std::sync::atomic::Ordering;
 use base64::Engine;
 use crate::gui::state::AppState;
 use crate::gui::backup_widgets;
-use crate::{storage, crypto};
+use crate::crypto;
 
 impl AppState {
     pub fn render_keypair_section(&mut self, ui: &mut egui::Ui) {

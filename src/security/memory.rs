@@ -131,7 +131,6 @@ unsafe impl Send for SecureMemory {}
 unsafe impl Sync for SecureMemory {}
 
 /// Secure vector that uses secure memory allocation
-#[derive(ZeroizeOnDrop)]
 pub struct SecureVec {
     data: Vec<u8>,
     secure_memory: Option<SecureMemory>,
@@ -247,6 +246,12 @@ impl SecureVec {
 impl Default for SecureVec {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl Drop for SecureVec {
+    fn drop(&mut self) {
+        self.clear();
     }
 }
 

@@ -120,7 +120,7 @@ impl InputValidator {
             return Err(anyhow!("Password too long (maximum 128 characters)"));
         }
 
-        let mut score = 0;
+        let mut score = 0u32;
         let mut feedback = Vec::new();
 
         // Check for lowercase letters
@@ -226,7 +226,7 @@ impl InputValidator {
 
         // Check for potential JSON bombs (excessive nesting)
         let nesting_level = json_str.chars()
-            .fold((0, 0), |(max_depth, current_depth), c| {
+            .fold((0u32, 0u32), |(max_depth, current_depth), c| {
                 match c {
                     '{' | '[' => (max_depth.max(current_depth + 1), current_depth + 1),
                     '}' | ']' => (max_depth, current_depth.saturating_sub(1)),

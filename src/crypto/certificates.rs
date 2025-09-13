@@ -720,8 +720,9 @@ impl CertificateManager {
         };
 
         // Store CA and its certificate
+        let cert_id = ca_cert.id.clone();
         self.certificate_authorities.write().await.insert(ca_id.clone(), ca);
-        self.certificates.write().await.insert(ca_cert.id, ca_cert);
+        self.certificates.write().await.insert(cert_id, ca_cert);
 
         Ok(ca_id)
     }

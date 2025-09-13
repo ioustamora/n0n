@@ -1,4 +1,3 @@
-use async_trait::async_trait;
 use chrono::{DateTime, Utc, Duration};
 use serde::{Serialize, Deserialize};
 use std::collections::{HashMap, BTreeMap};
@@ -67,6 +66,23 @@ pub enum BackupStrategy {
     Continuous,
 }
 
+impl Default for BackupStrategy {
+    fn default() -> Self {
+        BackupStrategy::Full
+    }
+}
+
+impl std::fmt::Display for BackupStrategy {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BackupStrategy::Full => write!(f, "Full"),
+            BackupStrategy::Incremental => write!(f, "Incremental"),
+            BackupStrategy::Differential => write!(f, "Differential"),
+            BackupStrategy::Continuous => write!(f, "Continuous"),
+        }
+    }
+}
+
 /// Backup schedule configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BackupSchedule {
@@ -89,7 +105,7 @@ pub struct BackupSchedule {
 }
 
 /// Backup frequency options
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum BackupFrequency {
     /// Run once at specified time
     Once { at: DateTime<Utc> },
@@ -105,6 +121,12 @@ pub enum BackupFrequency {
     Monthly { day: u8, hour: u8 },
     /// Custom cron expression
     Cron { expression: String },
+}
+
+impl Default for BackupFrequency {
+    fn default() -> Self {
+        BackupFrequency::Daily { hour: 2 }
+    }
 }
 
 /// Retention policy for backups
@@ -384,6 +406,7 @@ impl BackupManager {
         let id = Uuid::new_v4().to_string();
         let now = Utc::now();
         
+        let next_run = self.calculate_next_run(&frequency, now);
         let schedule = BackupSchedule {
             id: id.clone(),
             name,
@@ -396,7 +419,7 @@ impl BackupManager {
             created_at: now,
             updated_at: now,
             last_run: None,
-            next_run: self.calculate_next_run(&frequency, now),
+            next_run,
             compression_enabled: true,
             encryption_enabled: false,
             verify_after_backup: true,
@@ -465,10 +488,8 @@ impl BackupManager {
             Ok(()) => {
                 backup_record.status = BackupStatus::Completed;
                 backup_record.completed_at = Some(Utc::now());
-                backup_record.duration_seconds = Some(
-                    (backup_record.completed_at.unwrap() - backup_record.started_at)
-                        .num_seconds() as u64
-                );
+                backup_record.duration_seconds = backup_record.completed_at
+                    .map(|completed| (completed - backup_record.started_at).num_seconds() as u64);
                 
                 // Verification if enabled
                 if schedule.verify_after_backup {
@@ -660,7 +681,7 @@ impl BackupManager {
         let is_valid = failed_chunks.is_empty() && 
                       failed_metadata.is_empty() && 
                       completeness_check.is_complete &&
-                      restore_test.map_or(true, |test| test.success);
+                      restore_test.as_ref().map_or(true, |test| test.success);
         
         Ok(VerificationStatus {
             verified_at: Utc::now(),
@@ -793,7 +814,7 @@ impl BackupManager {
         
         // Verify checksum
         let checksum = self.calculate_checksum(&_restored_data);
-        if checksum != chunk_info.original_checksum.as_ref().unwrap_or(&chunk_info.checksum) {
+        if checksum != *chunk_info.original_checksum.as_ref().unwrap_or(&chunk_info.checksum) {
             return Err(BackupError::RestoreFailed("Checksum mismatch after restore".to_string()));
         }
         
@@ -828,7 +849,7 @@ impl BackupManager {
         
         // Phase 2: Deep verification (sample restore test)
         if basic_verification.is_valid {
-            let restore_test = basic_verification.restore_test.unwrap_or_else(|| RestoreTest {
+            let restore_test = basic_verification.restore_test.clone().unwrap_or_else(|| RestoreTest {
                 tested_chunks: 0,
                 successful_restores: 0,
                 failed_restores: 0,
@@ -889,7 +910,7 @@ impl BackupManager {
         
         // Restore chunks
         for chunk_info in &backup_record.chunks_manifest {
-            let backed_up_data = source.load_chunk(&chunk_info.backup_location).await?;
+            let backed_up_data = source.load_chunk("", &chunk_info.backup_location).await?;
             
             // Decompress if needed
             let restored_data = if backup_record.compressed_size_bytes.is_some() {
@@ -907,15 +928,15 @@ impl BackupManager {
             }
             
             // Save to destination
-            destination.save_chunk(&chunk_info.chunk_hash, restored_data).await?;
+            destination.save_chunk("", &chunk_info.chunk_hash, &restored_data).await?;
         }
         
         // Restore metadata
         for metadata_hash in &backup_record.metadata_manifest {
             let backup_location = format!("backup_{}/metadata_{}", backup_record.id, metadata_hash);
-            if let Ok(metadata_data) = source.load_chunk(&backup_location).await {
+            if let Ok(metadata_data) = source.load_chunk("", &backup_location).await {
                 let metadata: ChunkMetadata = serde_json::from_slice(&metadata_data)?;
-                destination.save_metadata(metadata_hash, metadata).await?;
+                destination.save_metadata("", metadata_hash, &metadata).await?;
             }
         }
         
@@ -973,7 +994,8 @@ impl BackupManager {
                 Some(from + Duration::hours(*interval as i64))
             }
             BackupFrequency::Daily { hour } => {
-                Some(from.date_naive().and_hms_opt(*hour as u32, 0, 0).unwrap().and_utc() + Duration::days(1))
+                from.date_naive().and_hms_opt(*hour as u32, 0, 0)
+                    .map(|dt| dt.and_utc() + Duration::days(1))
             }
             BackupFrequency::Weekly { day: _, hour } => {
                 Some(from + Duration::days(7))
@@ -1031,13 +1053,13 @@ impl BackupManager {
         Ok(())
     }
 
-    /// Point-in-time recovery: Get available recovery points
-    pub async fn get_recovery_points(&self, backend_name: &str) -> Result<Vec<DateTime<Utc>>, BackupError> {
+    /// Point-in-time recovery: Get available recovery points for a specific backend
+    pub async fn get_backend_recovery_points(&self, backend_name: &str) -> Result<Vec<DateTime<Utc>>, BackupError> {
         let records = self.backup_records.read().await;
         let mut recovery_points: Vec<DateTime<Utc>> = records
             .values()
             .filter(|record| {
-                record.backend_name == backend_name &&
+                record.source_backend == backend_name &&
                 record.status == BackupStatus::Completed &&
                 record.verification_status.as_ref().map_or(false, |v| v.is_valid)
             })
@@ -1061,7 +1083,7 @@ impl BackupManager {
         let target_backup = records
             .values()
             .filter(|record| {
-                record.backend_name == backend_name &&
+                record.source_backend == backend_name &&
                 record.started_at <= target_time &&
                 record.status == BackupStatus::Completed
             })
@@ -1100,9 +1122,9 @@ impl BackupManager {
             completed_at: None,
             status: RecoveryStatus::InProgress,
             restored_files: 0,
-            total_files: target_backup.file_count.unwrap_or(0),
+            total_files: target_backup.total_chunks,
             restored_bytes: 0,
-            total_bytes: target_backup.size_bytes,
+            total_bytes: target_backup.total_size_bytes,
         };
 
         // Store recovery record
@@ -1128,7 +1150,7 @@ impl BackupManager {
         let backup_key = format!("backup_{}.tar.gz", backup_id);
         
         // Get backup data from storage backend
-        let compressed_data = backend.get_chunk(&backup_key).await
+        let compressed_data = backend.load_chunk("", &backup_key).await
             .map_err(|e| BackupError::RestoreError(e.to_string()))?;
         
         // Decompress if needed
@@ -1157,7 +1179,7 @@ impl BackupManager {
         let base_backup = records
             .values()
             .filter(|record| {
-                record.backend_name == backend_name &&
+                record.source_backend == backend_name &&
                 record.strategy == BackupStrategy::Full &&
                 record.started_at <= target_time &&
                 record.status == BackupStatus::Completed
@@ -1169,7 +1191,7 @@ impl BackupManager {
         let mut incremental_backups: Vec<_> = records
             .values()
             .filter(|record| {
-                record.backend_name == backend_name &&
+                record.source_backend == backend_name &&
                 (record.strategy == BackupStrategy::Incremental || 
                  record.strategy == BackupStrategy::Differential) &&
                 record.started_at > base_backup.started_at &&
@@ -1206,7 +1228,7 @@ impl BackupManager {
         let continuous_records: Vec<_> = records
             .values()
             .filter(|record| {
-                record.backend_name == backend_name &&
+                record.source_backend == backend_name &&
                 record.strategy == BackupStrategy::Continuous &&
                 record.started_at <= target_time &&
                 record.status == BackupStatus::Completed
@@ -1238,7 +1260,7 @@ impl BackupManager {
         restore_path: &str
     ) -> Result<(), BackupError> {
         let changes_key = format!("incremental_{}.json", backup_id);
-        let changes_data = backend.get_chunk(&changes_key).await
+        let changes_data = backend.load_chunk("", &changes_key).await
             .map_err(|e| BackupError::RestoreError(e.to_string()))?;
         
         // Parse change set
@@ -1261,7 +1283,7 @@ impl BackupManager {
         let changes_key = format!("continuous_{}_{}.json", 
             backup_id, target_time.timestamp());
         
-        let changes_data = backend.get_chunk(&changes_key).await
+        let changes_data = backend.load_chunk("", &changes_key).await
             .map_err(|e| BackupError::RestoreError(e.to_string()))?;
         
         // Parse and apply time-based changes
@@ -1321,6 +1343,9 @@ impl BackupManager {
 pub struct BackupScheduler {
     schedules: Vec<BackupSchedule>,
     running: bool,
+    recovery_plans: Arc<RwLock<HashMap<String, DisasterRecoveryPlan>>>,
+    backup_records: Arc<RwLock<HashMap<String, BackupRecord>>>,
+    storage_backends: Arc<RwLock<HashMap<String, Arc<dyn StorageBackend>>>>,
 }
 
 impl BackupScheduler {
@@ -1328,6 +1353,9 @@ impl BackupScheduler {
         Self {
             schedules: Vec::new(),
             running: false,
+            recovery_plans: Arc::new(RwLock::new(HashMap::new())),
+            backup_records: Arc::new(RwLock::new(HashMap::new())),
+            storage_backends: Arc::new(RwLock::new(HashMap::new())),
         }
     }
     
@@ -1369,11 +1397,12 @@ impl BackupScheduler {
             id: plan_id.clone(),
             name,
             description,
-            rto_hours: 4, // Default 4-hour RTO
-            rpo_hours: 1, // Default 1-hour RPO
+            priority: 3, // Default medium priority
+            recovery_time_objective: Duration::hours(4), // Default 4-hour RTO
+            recovery_point_objective: Duration::hours(1), // Default 1-hour RPO
             backup_schedules,
             recovery_procedures,
-            test_schedule: Some(BackupFrequency::Weekly { day_of_week: 1 }),
+            test_schedule: Some(BackupFrequency::Weekly { day: 1, hour: 2 }),
             last_test: None,
             contacts,
             created_at: Utc::now(),
@@ -1466,7 +1495,7 @@ impl BackupScheduler {
         };
 
         Ok(format!("Plan '{}': {} (RTO: {}h, RPO: {}h, Procedures: {})", 
-            plan.name, status, plan.rto_hours, plan.rpo_hours, plan.recovery_procedures.len()))
+            plan.name, status, plan.recovery_time_objective.num_hours(), plan.recovery_point_objective.num_hours(), plan.recovery_procedures.len()))
     }
 
     /// List all disaster recovery plans

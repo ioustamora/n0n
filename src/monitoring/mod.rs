@@ -107,7 +107,7 @@ pub enum ExportType {
     CustomHttp,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 struct ServiceState {
     started_at: DateTime<Utc>,
     is_running: bool,
@@ -116,6 +116,7 @@ struct ServiceState {
 }
 
 #[derive(Debug, Clone)]
+#[derive(Serialize, Deserialize)]
 struct ExportStatus {
     last_export: Option<DateTime<Utc>>,
     last_error: Option<String>,
@@ -369,7 +370,7 @@ impl MonitoringService {
     fn spawn_cleanup_task(&self) -> tokio::task::JoinHandle<()> {
         let service = self.clone();
         tokio::spawn(async move {
-            let mut interval = tokio::time::interval(Duration::from_hours(4)); // Every 4 hours
+            let mut interval = tokio::time::interval(Duration::from_secs(4 * 3600)); // Every 4 hours
             
             loop {
                 interval.tick().await;

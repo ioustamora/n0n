@@ -101,7 +101,6 @@ impl From<Vec<u8>> for SecureString {
 }
 
 /// Secure buffer for cryptographic keys and sensitive data
-#[derive(ZeroizeOnDrop)]
 pub struct SecureBuffer {
     data: Vec<u8>,
     created_at: SystemTime,
@@ -173,8 +172,13 @@ impl SecureBuffer {
     }
 }
 
+impl Drop for SecureBuffer {
+    fn drop(&mut self) {
+        self.clear();
+    }
+}
+
 /// Secure key wrapper that ensures keys are properly zeroized
-#[derive(ZeroizeOnDrop)]
 pub struct SecureKey {
     key_data: Vec<u8>,
     key_type: KeyType,
@@ -279,6 +283,12 @@ impl SecureKey {
         let key_data = self.get_key_data()?;
         let derived_data = crate::security::key_derivation::hkdf_derive(key_data, &[], info, length)?;
         Ok(SecureKey::new(derived_data, KeyType::Derivation))
+    }
+}
+
+impl Drop for SecureKey {
+    fn drop(&mut self) {
+        self.key_data.zeroize();
     }
 }
 
@@ -420,7 +430,7 @@ impl SecureSession {
         SessionStats {
             session_id: self.session_id.clone(),
             created_at: self.created_at,
-            last_activity: self.last_activity.lock().unwrap_or(&self.created_at).clone(),
+            last_activity: *self.last_activity.lock().unwrap(),
             data_items: data_count,
             is_valid: self.is_valid(),
             age: self.created_at.elapsed().unwrap_or_default(),
@@ -537,7 +547,6 @@ impl SessionManager {
     /// Start automatic cleanup background task
     pub fn start_cleanup_task(&self) -> tokio::task::JoinHandle<()> {
         let cleanup_interval = self.cleanup_interval;
-        let sessions = std::sync::Arc::new(self.sessions.read().unwrap().clone());
 
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(cleanup_interval);
