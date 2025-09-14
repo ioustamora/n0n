@@ -1,6 +1,15 @@
-# n0n - Enterprise-Grade Secure File Sharing
+# n0n - Enterprise-Grade Secure File Synchronization & Storage
 
-n0n is a comprehensive, cross-platform desktop application for secure file splitting, authenticated encryption, and enterprise storage management. It features a revolutionary multi-backend storage architecture with 11+ storage backends, advanced encryption at rest, usage analytics, quotas, and comprehensive configuration management.
+n0n is a modern, enterprise-grade secure file synchronization and storage solution built in Rust. It provides comprehensive data protection through advanced encryption, multi-backend storage architecture, real-time monitoring, and disaster recovery capabilities. Designed for organizations requiring secure, scalable, and auditable file management systems.
+
+[![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)]()
+[![Security](https://img.shields.io/badge/security-enterprise--grade-blue.svg)]()
+[![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-green.svg)]()
+[![Rust](https://img.shields.io/badge/rust-1.70+-orange.svg)]()
+
+## 🎯 **Overview**
+
+n0n addresses critical enterprise needs for secure file management with a modular architecture that scales from individual developers to large organizations. Built with security-first principles, it provides military-grade encryption, comprehensive audit trails, and flexible deployment options.
 
 ## 🚀 Key Features
 
@@ -31,13 +40,14 @@ n0n is a comprehensive, cross-platform desktop application for secure file split
 - **Environment management** for development, testing, staging, and production
 - **Feature flags** and environment variables per deployment environment
 
-### 🎛️ **Advanced GUI Features**
-- **Modern UI** with comprehensive configuration interfaces
-- **Real-time progress tracking** with pause/resume and cancellation
-- **Drag-and-drop** file and folder selection
-- **Folder watcher** with configurable debounce and filtering
-- **Dry-run mode** with realistic progress simulation
-- **Settings persistence** with non-secret data storage
+### 🎛️ **Modern Desktop Interface**
+- **Cross-platform GUI** built with egui for native performance
+- **Enterprise dashboard** with real-time monitoring and alerts
+- **Drag-and-drop** file operations with progress tracking
+- **Configuration wizards** for guided setup of complex features
+- **Role-based access control** interface with hierarchical permissions
+- **Real-time collaboration** tools for team environments
+- **Dark/light theme** support with accessibility features
 
 ### 🗄️ **Backup & Disaster Recovery**
 - **Automated backup scheduling** with multiple strategies (Full, Incremental, Differential, Continuous)
@@ -79,24 +89,64 @@ n0n is a comprehensive, cross-platform desktop application for secure file split
 
 ## 🚀 **Quick Start**
 
+### **Prerequisites**
+- Rust 1.70+ with Cargo
+- For GUI: System dependencies (see [GUI Dependencies](#gui-dependencies))
+- For enterprise features: Database access and cloud credentials
+
 ### **Installation**
 ```bash
+# Clone the repository
 git clone https://github.com/your-org/n0n.git
 cd n0n
+
+# Build optimized release
 cargo build --release
+
+# Run tests to verify installation
+cargo test
 ```
 
-### **Run the Application**
+### **Launch Application**
 ```bash
+# GUI application
 cargo run
+
+# CLI mode (headless)
+cargo run --features="cli-only"
+
+# With specific configuration
+cargo run -- --config production.toml
 ```
 
-### **Basic Usage**
-1. **Generate Keys**: Create or import encryption keypairs
-2. **Configure Storage**: Select and configure your storage backend(s)
-3. **Set Security**: Configure encryption, quotas, and analytics
-4. **Process Files**: Split, encrypt, and store files securely
-5. **Monitor**: View usage statistics and health metrics
+### **First-Time Setup**
+1. **🔑 Security Setup**: Generate encryption keypairs or import existing ones
+2. **☁️ Storage Configuration**: Connect to your preferred storage backend(s)
+3. **👥 Access Control**: Set up user roles and permissions (if multi-user)
+4. **📊 Monitoring**: Configure analytics and alerting preferences
+5. **🔄 Backup Strategy**: Schedule automated backups and disaster recovery plans
+
+### **GUI Dependencies**
+**Ubuntu/Debian:**
+```bash
+sudo apt-get install libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev
+```
+
+**Fedora:**
+```bash
+sudo dnf install libxcb-devel libxkbcommon-devel openssl-devel
+```
+
+**Windows:**
+```bash
+# No additional dependencies required
+```
+
+**macOS:**
+```bash
+# Install via Homebrew
+brew install openssl
+```
 
 ### **Advanced Configuration**
 ```bash
@@ -332,53 +382,105 @@ n0n dr compliance-report --plan "Production DR Plan" \
     --export "compliance-report.json"
 ```
 
-## 🧪 **Testing**
+## 🧪 **Testing & Quality Assurance**
 
-### **Unit Tests**
+### **Test Suite Overview**
+n0n includes comprehensive testing across multiple dimensions:
+- **Unit Tests**: Core functionality and algorithms
+- **Integration Tests**: Storage backends and external services
+- **Security Tests**: Encryption, access control, and audit trails
+- **Performance Tests**: Benchmarks and load testing
+- **End-to-End Tests**: Complete workflows and disaster recovery scenarios
+
+### **Running Tests**
+
+#### **Basic Test Suite**
 ```bash
+# Run all unit tests
 cargo test
+
+# Run with output for debugging
+cargo test -- --nocapture
+
+# Run specific test module
+cargo test crypto::tests
 ```
 
-### **Integration Tests**
+#### **Integration Tests**
 ```bash
-# Storage backend tests
+# All integration tests (requires external services)
+cargo test --features integration-tests
+
+# Storage backend integration tests
 cargo test --features integration-tests storage_backends
 
-# SFTP integration (requires server)
+# SFTP integration (requires test server)
 export N0N_SFTP_HOST=test-server:22
 export N0N_SFTP_USER=testuser
 export N0N_SFTP_PASSWORD=testpass
 cargo test --features sftp-tests sftp_integration
+
+# Cloud storage tests (requires credentials)
+export AWS_ACCESS_KEY_ID=test-key
+export AWS_SECRET_ACCESS_KEY=test-secret
+cargo test --features aws-tests s3_integration
 ```
 
-### **Backup & DR Tests**
+#### **Security & Compliance Tests**
 ```bash
-# Test backup functionality
+# Cryptographic algorithm validation
+cargo test --features crypto-validation crypto_compliance
+
+# Access control and audit tests
+cargo test --features security-tests access_control_suite
+
+# Memory safety and secure deletion
+cargo test --features memory-tests secure_memory_handling
+```
+
+#### **Performance & Load Testing**
+```bash
+# Benchmark suite
+cargo bench
+
+# Storage performance benchmarks
+cargo bench --features benchmark-tests storage_performance
+
+# Encryption performance testing
+cargo bench crypto_benchmarks
+
+# Large file handling tests
+cargo test --release --features load-tests large_file_processing
+```
+
+#### **Disaster Recovery Testing**
+```bash
+# Backup system validation
 cargo test --features backup-tests backup_integration
 
-# Test disaster recovery procedures
+# Disaster recovery procedures
 cargo test --features dr-tests disaster_recovery
 
-# Test point-in-time recovery
+# Point-in-time recovery validation
 cargo test --features recovery-tests point_in_time_recovery
 
-# Test backup verification systems
+# Backup integrity verification
 cargo test --features verification-tests backup_verification
 
-# End-to-end backup and restore tests
+# Complete backup/restore workflows
 cargo test --release --features e2e-tests backup_restore_e2e
 ```
 
-### **Benchmark Tests**
+### **Continuous Integration**
 ```bash
-# Performance benchmarks
-cargo bench
+# CI test suite (runs on all platforms)
+./scripts/ci-test.sh
 
-# Storage backend performance
-cargo test --release --features benchmark-tests storage_performance
+# Security audit
+cargo audit
 
-# Backup performance benchmarks
-cargo bench --features backup-bench backup_performance
+# Code coverage report
+cargo tarpaulin --out Html
 ```
 
 ## 🏗️ **Architecture**
@@ -413,45 +515,116 @@ cargo bench --features backup-bench backup_performance
 - **Verification Engine**: Performs multi-phase backup integrity checking
 - **Recovery Engine**: Handles point-in-time recovery and restore operations
 
-## 📚 **Documentation**
+## 📚 **Documentation & Resources**
 
-- **[Configuration Guide](docs/configuration.md)** - Complete configuration reference
-- **[Storage Backends](docs/storage-backends.md)** - Backend-specific documentation
-- **[Backup & Recovery Guide](docs/backup-recovery.md)** - Enterprise backup and disaster recovery
-- **[Point-in-Time Recovery](docs/point-in-time-recovery.md)** - Detailed recovery procedures
-- **[Disaster Recovery Planning](docs/disaster-recovery.md)** - DR planning and testing
-- **[Security Guide](docs/security.md)** - Security best practices
-- **[API Reference](docs/api.md)** - Developer API documentation
-- **[Deployment Guide](docs/deployment.md)** - Production deployment
-- **[Compliance Guide](docs/compliance.md)** - SOC2, ISO27001, and regulatory compliance
+### **User Guides**
+- **[Getting Started Guide](docs/getting-started.md)** - Step-by-step setup and first use
+- **[Configuration Reference](docs/configuration.md)** - Complete configuration options
+- **[Storage Backend Guide](docs/storage-backends.md)** - Backend setup and optimization
+- **[Security Best Practices](docs/security.md)** - Security configuration and hardening
+- **[Troubleshooting Guide](docs/troubleshooting.md)** - Common issues and solutions
+
+### **Enterprise Documentation**
+- **[Deployment Guide](docs/deployment.md)** - Production deployment strategies
+- **[Backup & Recovery Manual](docs/backup-recovery.md)** - Enterprise backup and disaster recovery
+- **[Disaster Recovery Planning](docs/disaster-recovery.md)** - DR planning, testing, and execution
+- **[Compliance Guide](docs/compliance.md)** - SOC2, ISO27001, GDPR, and regulatory compliance
+- **[Access Control & RBAC](docs/access-control.md)** - User management and permissions
+
+### **Developer Resources**
+- **[API Reference](docs/api.md)** - Complete API documentation
+- **[Plugin Development](docs/plugins.md)** - Creating custom storage backends and widgets
+- **[Contributing Guide](CONTRIBUTING.md)** - Development setup and contribution guidelines
+- **[Architecture Overview](docs/architecture.md)** - System design and component interactions
+- **[Performance Tuning](docs/performance.md)** - Optimization and scaling strategies
+
+### **Additional Resources**
+- **[FAQ](docs/faq.md)** - Frequently asked questions
+- **[Release Notes](CHANGELOG.md)** - Version history and breaking changes
+- **[Migration Guide](docs/migration.md)** - Upgrading between major versions
+- **[Examples Repository](examples/)** - Sample configurations and use cases
 
 ## 🤝 **Contributing**
 
-1. Fork the repository
-2. Create a feature branch
-3. Add comprehensive tests
-4. Update documentation
-5. Submit a pull request
+We welcome contributions from the community! n0n is built with security and reliability as core principles, so we maintain high standards for code quality and testing.
 
-### **Development Setup**
+### **How to Contribute**
+1. **🍴 Fork** the repository and create a feature branch
+2. **🔧 Develop** your feature with comprehensive tests
+3. **📝 Document** your changes and update relevant documentation
+4. **🧪 Test** thoroughly across different platforms and scenarios
+5. **📤 Submit** a pull request with detailed description
+
+### **Development Environment Setup**
 ```bash
-git clone https://github.com/your-org/n0n.git
+# Clone your fork
+git clone https://github.com/your-username/n0n.git
 cd n0n
-cargo build
-cargo test
-cargo run
+
+# Install development dependencies
+cargo install cargo-watch cargo-audit cargo-tarpaulin
+
+# Run development build with hot reload
+cargo watch -x run
+
+# Run full test suite
+cargo test --all-features
+
+# Check security vulnerabilities
+cargo audit
+
+# Generate test coverage report
+cargo tarpaulin --out Html
 ```
+
+### **Contribution Guidelines**
+- **Security First**: All changes must maintain or improve security posture
+- **Test Coverage**: New features require >= 80% test coverage
+- **Documentation**: Public APIs must be documented with examples
+- **Performance**: Changes affecting performance need benchmark comparisons
+- **Cross-Platform**: Ensure compatibility across Windows, macOS, and Linux
+
+### **Development Priorities**
+We're particularly interested in contributions in these areas:
+1. **🎨 UI/UX Improvements**: Enhanced user experience and accessibility
+2. **🔒 Security Features**: Advanced cryptographic operations and compliance
+3. **☁️ Storage Backends**: New cloud providers and storage systems
+4. **🌐 Internationalization**: Multi-language support and localization
+5. **📱 Mobile Support**: Touch-friendly interfaces and mobile backends
+6. **🔌 Plugin Architecture**: Extensibility and custom integrations
 
 ## 📄 **License**
 
 This project is licensed under the terms specified in the [LICENSE](LICENSE) file.
 
-## 🆘 **Support**
+## 🆘 **Support & Community**
 
-- **Issues**: [GitHub Issues](https://github.com/your-org/n0n/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/your-org/n0n/discussions)
-- **Security**: security@example.com
+### **Getting Help**
+- **📖 Documentation**: Check our [comprehensive docs](docs/) first
+- **❓ GitHub Discussions**: [Community Q&A and general discussions](https://github.com/your-org/n0n/discussions)
+- **🐛 Issues**: [Report bugs and feature requests](https://github.com/your-org/n0n/issues)
+- **💬 Discord**: Join our [Discord community](https://discord.gg/n0n-community) for real-time chat
+
+### **Enterprise Support**
+- **🏢 Enterprise Licensing**: enterprise@n0n.io
+- **🛠️ Professional Services**: consulting@n0n.io
+- **🚨 Priority Support**: support@n0n.io
+- **🔒 Security Issues**: security@n0n.io (GPG key available)
+
+### **Community Resources**
+- **🎥 Tutorials**: [YouTube Channel](https://youtube.com/n0n-tutorials)
+- **📝 Blog**: [Technical blog and case studies](https://blog.n0n.io)
+- **🐦 Twitter**: [@n0n_project](https://twitter.com/n0n_project) for updates
+- **📺 Demos**: [Live demos and webinars](https://n0n.io/demos)
 
 ---
 
-**n0n** - Enterprise-grade secure file sharing with multi-cloud storage, advanced encryption, comprehensive backup & disaster recovery, and enterprise management tools for mission-critical data protection.
+<div align="center">
+
+**n0n** - Enterprise-grade secure file synchronization and storage
+
+*Built with 🦀 Rust • Secured with 🔒 Military-grade encryption • Designed for 🏢 Enterprise scale*
+
+[**Documentation**](docs/) • [**Quick Start**](#-quick-start) • [**Community**](https://github.com/your-org/n0n/discussions) • [**Enterprise**](https://n0n.io/enterprise)
+
+</div>
