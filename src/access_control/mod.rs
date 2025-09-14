@@ -139,7 +139,7 @@ pub enum ComplianceFramework {
     SOX,
     GDPR,
     HIPAA,
-    PCI_DSS,
+    PciDss,
     SOC2,
     ISO27001,
 }

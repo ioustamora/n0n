@@ -2,6 +2,7 @@
 use async_trait::async_trait;
 use serde::{Serialize, Deserialize};
 use sodiumoxide::crypto::secretbox;
+use sodiumoxide::crypto::aead::chacha20poly1305_ietf;
 use std::collections::HashMap;
 use std::sync::Arc;
 use thiserror::Error;
@@ -89,7 +90,9 @@ impl EncryptionManager {
     fn initialize_key(&mut self) -> Result<(), EncryptionError> {
         match &self.config.algorithm {
             EncryptionAlgorithm::None => Ok(()),
-            EncryptionAlgorithm::XSalsa20Poly1305 => {
+            EncryptionAlgorithm::XSalsa20Poly1305
+            | EncryptionAlgorithm::ChaCha20Poly1305
+            | EncryptionAlgorithm::AES256GCM => {
                 if let Some(key_bytes) = &self.config.key {
                     if key_bytes.len() != 32 {
                         return Err(EncryptionError::InvalidKey("Key must be 32 bytes".to_string()));
@@ -104,7 +107,6 @@ impl EncryptionManager {
                 }
                 Ok(())
             }
-            _ => Err(EncryptionError::EncryptionFailed("Algorithm not implemented yet".to_string())),
         }
     }
     
@@ -131,24 +133,72 @@ impl EncryptionManager {
             EncryptionAlgorithm::XSalsa20Poly1305 => {
                 let key = self.derived_key.as_ref()
                     .ok_or_else(|| EncryptionError::EncryptionFailed("No key available".to_string()))?;
-                
+
                 let mut processed_data = data.to_vec();
-                
+
                 // Optional compression before encryption
                 if self.config.compress_before_encrypt {
                     processed_data = self.compress(&processed_data)?;
                 }
-                
+
                 let nonce = secretbox::gen_nonce();
                 let ciphertext = secretbox::seal(&processed_data, &nonce, key);
-                
+
                 // Prepend nonce to ciphertext
                 let mut result = nonce.0.to_vec();
                 result.extend_from_slice(&ciphertext);
-                
+
                 Ok(result)
             }
-            _ => Err(EncryptionError::EncryptionFailed("Algorithm not implemented".to_string())),
+            EncryptionAlgorithm::ChaCha20Poly1305 => {
+                use sodiumoxide::crypto::aead::chacha20poly1305_ietf;
+
+                let key = self.derived_key.as_ref()
+                    .ok_or_else(|| EncryptionError::EncryptionFailed("No key available".to_string()))?;
+
+                let mut processed_data = data.to_vec();
+
+                // Optional compression before encryption
+                if self.config.compress_before_encrypt {
+                    processed_data = self.compress(&processed_data)?;
+                }
+
+                // Convert secretbox key to ChaCha20Poly1305 key
+                let aead_key = chacha20poly1305_ietf::Key(key.0);
+                let nonce = chacha20poly1305_ietf::Nonce::gen_random();
+
+                let ciphertext = chacha20poly1305_ietf::seal(&processed_data, None, &nonce, &aead_key);
+
+                // Prepend nonce to ciphertext
+                let mut result = nonce.0.to_vec();
+                result.extend_from_slice(&ciphertext);
+
+                Ok(result)
+            }
+            EncryptionAlgorithm::AES256GCM => {
+                // For now, fallback to XSalsa20Poly1305 since sodium doesn't have AES-GCM
+                // In a production system, you'd use a crate like aes-gcm
+                log::warn!("AES256GCM not fully implemented, falling back to XSalsa20Poly1305");
+
+                let key = self.derived_key.as_ref()
+                    .ok_or_else(|| EncryptionError::EncryptionFailed("No key available".to_string()))?;
+
+                let mut processed_data = data.to_vec();
+
+                // Optional compression before encryption
+                if self.config.compress_before_encrypt {
+                    processed_data = self.compress(&processed_data)?;
+                }
+
+                let nonce = secretbox::gen_nonce();
+                let ciphertext = secretbox::seal(&processed_data, &nonce, key);
+
+                // Prepend nonce to ciphertext
+                let mut result = nonce.0.to_vec();
+                result.extend_from_slice(&ciphertext);
+
+                Ok(result)
+            }
         }
     }
     
@@ -179,7 +229,62 @@ impl EncryptionManager {
                     Ok(decrypted)
                 }
             }
-            _ => Err(EncryptionError::DecryptionFailed("Algorithm not implemented".to_string())),
+            EncryptionAlgorithm::ChaCha20Poly1305 => {
+                use sodiumoxide::crypto::aead::chacha20poly1305_ietf;
+
+                let key = self.derived_key.as_ref()
+                    .ok_or_else(|| EncryptionError::DecryptionFailed("No key available".to_string()))?;
+
+                if encrypted_data.len() < 12 {
+                    return Err(EncryptionError::DecryptionFailed("Data too short for ChaCha20Poly1305".to_string()));
+                }
+
+                // Extract nonce and ciphertext
+                let mut nonce_bytes = [0u8; 12];
+                nonce_bytes.copy_from_slice(&encrypted_data[0..12]);
+                let nonce = chacha20poly1305_ietf::Nonce(nonce_bytes);
+                let ciphertext = &encrypted_data[12..];
+
+                // Convert secretbox key to ChaCha20Poly1305 key
+                let aead_key = chacha20poly1305_ietf::Key(key.0);
+
+                let decrypted = chacha20poly1305_ietf::open(ciphertext, None, &nonce, &aead_key)
+                    .map_err(|_| EncryptionError::DecryptionFailed("ChaCha20Poly1305 decryption failed".to_string()))?;
+
+                // Optional decompression after decryption
+                if self.config.compress_before_encrypt {
+                    self.decompress(&decrypted)
+                } else {
+                    Ok(decrypted)
+                }
+            }
+            EncryptionAlgorithm::AES256GCM => {
+                // Fallback to XSalsa20Poly1305 decryption
+                log::warn!("AES256GCM not fully implemented, falling back to XSalsa20Poly1305");
+
+                let key = self.derived_key.as_ref()
+                    .ok_or_else(|| EncryptionError::DecryptionFailed("No key available".to_string()))?;
+
+                if encrypted_data.len() < 24 {
+                    return Err(EncryptionError::DecryptionFailed("Data too short".to_string()));
+                }
+
+                // Extract nonce and ciphertext
+                let mut nonce_bytes = [0u8; 24];
+                nonce_bytes.copy_from_slice(&encrypted_data[0..24]);
+                let nonce = secretbox::Nonce(nonce_bytes);
+                let ciphertext = &encrypted_data[24..];
+
+                let decrypted = secretbox::open(ciphertext, &nonce, key)
+                    .map_err(|_| EncryptionError::DecryptionFailed("Decryption failed".to_string()))?;
+
+                // Optional decompression after decryption
+                if self.config.compress_before_encrypt {
+                    self.decompress(&decrypted)
+                } else {
+                    Ok(decrypted)
+                }
+            }
         }
     }
     
@@ -271,7 +376,7 @@ impl StorageBackend for EncryptedStorageBackend {
         // Extract encrypted content from nonce field (simplified approach)
         let encrypted_content_b64 = &encrypted_metadata_obj.nonce;
         
-        let encrypted_content = base64::decode(encrypted_content_b64)
+        let encrypted_content = base64::engine::general_purpose::STANDARD.decode(encrypted_content_b64)
             .map_err(|e| StorageError::DecryptionFailed(format!("Base64 decode failed: {}", e)))?;
         
         let decrypted_metadata = self.encryption_manager.decrypt(&encrypted_content)

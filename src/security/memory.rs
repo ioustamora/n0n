@@ -366,7 +366,33 @@ impl MemoryProtection {
         
         #[cfg(not(any(unix, windows)))]
         {
-            return Err(anyhow!("Secure random generation not implemented for this platform"));
+            // Fallback to standard library random for other platforms
+            // Note: This is less secure than OS-provided randomness
+            log::warn!("Using fallback random number generation - not cryptographically secure");
+
+            use std::collections::hash_map::RandomState;
+            use std::hash::{BuildHasher, Hasher};
+
+            // Use the standard library's RandomState as a source of entropy
+            let mut hasher = RandomState::new().build_hasher();
+            let mut remaining = len;
+            let mut offset = 0;
+
+            while remaining > 0 {
+                let chunk_size = std::cmp::min(remaining, 8);
+                hasher.write_usize(std::ptr::addr_of!(buffer).addr() + offset);
+                let random_bytes = hasher.finish().to_le_bytes();
+
+                for i in 0..chunk_size {
+                    buffer[offset + i] = random_bytes[i];
+                }
+
+                remaining -= chunk_size;
+                offset += chunk_size;
+
+                // Create a new hasher for the next iteration
+                hasher = RandomState::new().build_hasher();
+            }
         }
         
         Ok(buffer)

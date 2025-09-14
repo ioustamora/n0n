@@ -430,8 +430,29 @@ impl MonitoringService {
                 let json_data = serde_json::to_string(&dashboard_data)?;
                 self.send_http_data(&endpoint.url, &json_data, "application/json").await?;
             }
-            _ => {
-                log::warn!("Export type {:?} not yet implemented", endpoint.endpoint_type);
+            ExportType::DataDog => {
+                // Export metrics to DataDog
+                let dashboard_data = self.get_dashboard_data().await?;
+                let datadog_payload = self.format_datadog_metrics(&dashboard_data).await?;
+                self.send_http_data(&endpoint.url, &datadog_payload, "application/json").await?;
+            }
+            ExportType::NewRelic => {
+                // Export to New Relic
+                let dashboard_data = self.get_dashboard_data().await?;
+                let newrelic_payload = self.format_newrelic_metrics(&dashboard_data).await?;
+                self.send_http_data(&endpoint.url, &newrelic_payload, "application/json").await?;
+            }
+            ExportType::CloudWatch => {
+                // Export to AWS CloudWatch (would need AWS SDK in production)
+                log::info!("CloudWatch export - would use AWS SDK to send metrics");
+                // For now, log the metrics that would be sent
+                let dashboard_data = self.get_dashboard_data().await?;
+                log::debug!("CloudWatch metrics: {:?}", dashboard_data.system_metrics);
+            }
+            ExportType::Grafana => {
+                // Export to Grafana (similar to Prometheus format)
+                let metrics = self.metric_collector.export_prometheus_format().await?;
+                self.send_http_data(&endpoint.url, &metrics, "text/plain").await?;
             }
         }
 
@@ -483,6 +504,55 @@ impl MonitoringService {
 
         log::info!("Completed data cleanup for retention policy");
         Ok(())
+    }
+
+    async fn format_datadog_metrics(&self, dashboard_data: &DashboardData) -> Result<String, MonitoringError> {
+        // Format metrics for DataDog API
+        let timestamp = Utc::now().timestamp();
+
+        let mut datadog_series = Vec::new();
+
+        // Convert system metrics to DataDog format
+        for (metric_name, metric_value) in &dashboard_data.metrics_summary {
+            let datadog_metric = serde_json::json!({
+                "series": [{
+                    "metric": format!("n0n.{}", metric_name),
+                    "points": [[timestamp, metric_value]],
+                    "tags": ["service:n0n", "environment:production"]
+                }]
+            });
+            datadog_series.push(datadog_metric);
+        }
+
+        serde_json::to_string(&datadog_series)
+            .map_err(|e| MonitoringError::ExportFailed(format!("DataDog formatting error: {}", e)))
+    }
+
+    async fn format_newrelic_metrics(&self, dashboard_data: &DashboardData) -> Result<String, MonitoringError> {
+        // Format metrics for New Relic API
+        let timestamp = Utc::now().timestamp_millis();
+
+        let mut newrelic_metrics = Vec::new();
+
+        // Convert system metrics to New Relic format
+        for (metric_name, metric_value) in &dashboard_data.metrics_summary {
+            let newrelic_metric = serde_json::json!({
+                "metrics": [{
+                    "name": format!("n0n.{}", metric_name),
+                    "type": "gauge",
+                    "value": metric_value,
+                    "timestamp": timestamp,
+                    "attributes": {
+                        "service": "n0n",
+                        "environment": "production"
+                    }
+                }]
+            });
+            newrelic_metrics.push(newrelic_metric);
+        }
+
+        serde_json::to_string(&newrelic_metrics)
+            .map_err(|e| MonitoringError::ExportFailed(format!("New Relic formatting error: {}", e)))
     }
 }
 

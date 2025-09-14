@@ -26,7 +26,12 @@
       "Bash(timeout 10 cargo check --quiet)",
       "Bash(timeout 30s cargo check)",
       "Bash(cat:*)",
-      "Bash(sed:*)"
+      "Bash(sed:*)",
+      "Bash(cargo test:*)",
+      "Bash(timeout 8 cargo check --quiet)",
+      "Bash(timeout 30 cargo build --lib)",
+      "Bash(timeout 15 cargo build --lib)",
+      "Bash(timeout 15 cargo build --lib --message-format=short)"
     ],
     "deny": [],
     "ask": []

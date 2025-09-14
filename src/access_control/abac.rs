@@ -496,10 +496,97 @@ impl AttributeBasedAccessControl {
             MatchFunction::LessThanOrEqual => {
                 Ok(self.compare_values(&attribute.value, &attribute_match.attribute_value) <= 0)
             }
-            _ => {
-                // For now, return false for unimplemented match functions
-                log::warn!("Unimplemented match function: {:?}", attribute_match.match_function);
-                Ok(false)
+            MatchFunction::RegexMatch => {
+                if let (AttributeValue::String(pattern), AttributeValue::String(value)) =
+                    (&attribute_match.attribute_value, &attribute.value) {
+                    match regex::Regex::new(pattern) {
+                        Ok(re) => Ok(re.is_match(value)),
+                        Err(e) => {
+                            log::warn!("Invalid regex pattern '{}': {}", pattern, e);
+                            Ok(false)
+                        }
+                    }
+                } else {
+                    Ok(false)
+                }
+            }
+            MatchFunction::DateTimeInRange => {
+                if let AttributeValue::DateTime(value_dt) = &attribute.value {
+                    // For range matching, we expect the pattern to be a range like "2023-01-01T00:00:00Z,2023-12-31T23:59:59Z"
+                    if let AttributeValue::String(range_str) = &attribute_match.attribute_value {
+                        let parts: Vec<&str> = range_str.split(',').collect();
+                        if parts.len() == 2 {
+                            match (parts[0].parse::<chrono::DateTime<chrono::Utc>>(),
+                                   parts[1].parse::<chrono::DateTime<chrono::Utc>>()) {
+                                (Ok(start), Ok(end)) => {
+                                    Ok(*value_dt >= start && *value_dt <= end)
+                                }
+                                _ => {
+                                    log::warn!("Invalid datetime range format: {}", range_str);
+                                    Ok(false)
+                                }
+                            }
+                        } else {
+                            log::warn!("DateTime range must contain exactly one comma: {}", range_str);
+                            Ok(false)
+                        }
+                    } else {
+                        Ok(false)
+                    }
+                } else {
+                    Ok(false)
+                }
+            }
+            MatchFunction::IpAddressInRange => {
+                if let (AttributeValue::String(pattern), AttributeValue::String(value)) =
+                    (&attribute_match.attribute_value, &attribute.value) {
+                    // Simple CIDR or range checking - for production, use a proper IP library
+                    if pattern.contains('/') {
+                        // CIDR notation
+                        log::warn!("CIDR IP range matching not fully implemented: {}", pattern);
+                        Ok(false)
+                    } else if pattern.contains('-') {
+                        // Range notation like "192.168.1.1-192.168.1.100"
+                        log::warn!("IP range matching not fully implemented: {}", pattern);
+                        Ok(false)
+                    } else {
+                        // Exact match
+                        Ok(value == pattern)
+                    }
+                } else {
+                    Ok(false)
+                }
+            }
+            MatchFunction::AnyOf => {
+                // For AnyOf, the pattern should be a comma-separated list
+                if let AttributeValue::String(patterns) = &attribute_match.attribute_value {
+                    let pattern_list: Vec<&str> = patterns.split(',').map(|s| s.trim()).collect();
+                    match &attribute.value {
+                        AttributeValue::String(value) => {
+                            Ok(pattern_list.contains(&value.as_str()))
+                        }
+                        AttributeValue::Integer(value) => {
+                            let value_str = value.to_string();
+                            Ok(pattern_list.contains(&value_str.as_str()))
+                        }
+                        _ => Ok(false)
+                    }
+                } else {
+                    Ok(false)
+                }
+            }
+            MatchFunction::AllOf => {
+                // For AllOf, check that the attribute value contains all specified values
+                if let AttributeValue::String(patterns) = &attribute_match.attribute_value {
+                    let pattern_list: Vec<&str> = patterns.split(',').map(|s| s.trim()).collect();
+                    if let AttributeValue::String(value) = &attribute.value {
+                        Ok(pattern_list.iter().all(|pattern| value.contains(pattern)))
+                    } else {
+                        Ok(false)
+                    }
+                } else {
+                    Ok(false)
+                }
             }
         }
     }
