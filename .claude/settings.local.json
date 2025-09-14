@@ -20,7 +20,8 @@
       "Bash(timeout 8 cargo check)",
       "Bash(grep:*)",
       "Bash(timeout 5 cargo check --quiet)",
-      "Bash(cargo check:*)"
+      "Bash(cargo check:*)",
+      "Bash(rustc:*)"
     ],
     "deny": [],
     "ask": []
