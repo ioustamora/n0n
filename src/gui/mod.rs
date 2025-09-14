@@ -9,17 +9,40 @@ pub mod crypto_widgets;
 pub mod monitoring_widgets;
 pub mod access_control_widgets;
 pub mod drag_drop;
+pub mod navigation;
+pub mod notifications;
+pub mod progressive_disclosure;
+pub mod dashboard;
+pub mod design_system;
+pub mod wizard;
+pub mod storage_wizard;
+pub mod data_visualization;
+pub mod role_based_ui;
+pub mod intelligent_config;
+pub mod adaptive_ui;
 
 pub use state::AppState;
 
 // Re-export enhanced state management
 pub use state_manager::{
-    StateManager, StateMessage, StateChange, 
-    GuiState, FileOperationsState, StorageState, 
+    StateManager, StateMessage, StateChange,
+    GuiState, FileOperationsState, StorageState,
     ConfigUIState, MigrationState, MonitoringState,
     ProgressState, ConnectionStatus, MigrationStatus,
     AlertNotification, AlertLevel
 };
+
+// Re-export new UI components
+pub use navigation::MainTab;
+pub use notifications::{NotificationManager, Notification, NotificationLevel};
+pub use progressive_disclosure::{ProgressiveDisclosure, ProgressiveDisclosureManager};
+pub use dashboard::DashboardState;
+pub use design_system::DesignSystem;
+pub use storage_wizard::{StorageWizard, StorageWizardStep};
+pub use data_visualization::{DataVisualization, SystemMetrics, StorageAnalytics};
+pub use role_based_ui::{RoleBasedUIManager, UserProfile, UserRole, ExpertiseLevel};
+pub use intelligent_config::IntelligentConfigManager;
+pub use adaptive_ui::AdaptiveUIManager;
 
 use eframe::egui;
 use std::path::PathBuf;

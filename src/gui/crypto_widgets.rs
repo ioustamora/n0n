@@ -4,8 +4,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use crate::crypto::{
-    CryptoService, KeyAlgorithm, KeyUsage, ComplianceFramework,
-    LifecycleState, KeyDerivationFunction, AuthenticatedEncryption,
+    CryptoService, KeyAlgorithm, KeyUsage, ComplianceFramework
 };
 
 /// Widget for managing cryptographic keys
@@ -432,8 +431,8 @@ pub struct AdvancedCryptoWidget {
     pub selected_operation: AdvancedOperation,
     pub input_text: String,
     pub output_text: String,
-    pub kdf_function: KeyDerivationFunction,
-    pub encryption_algorithm: AuthenticatedEncryption,
+    pub kdf_function: String,
+    pub encryption_algorithm: String,
     pub key_derivation_salt: String,
     pub key_derivation_iterations: u32,
     pub homomorphic_operations: Vec<String>,
@@ -458,8 +457,8 @@ impl Default for AdvancedCryptoWidget {
             selected_operation: AdvancedOperation::KeyDerivation,
             input_text: String::new(),
             output_text: String::new(),
-            kdf_function: KeyDerivationFunction::HKDF,
-            encryption_algorithm: AuthenticatedEncryption::AesGcm,
+            kdf_function: "HKDF".to_string(),
+            encryption_algorithm: "AES-GCM".to_string(),
             key_derivation_salt: String::new(),
             key_derivation_iterations: 10000,
             homomorphic_operations: Vec::new(),
@@ -542,12 +541,12 @@ impl AdvancedCryptoWidget {
         ui.horizontal(|ui| {
             ui.label("KDF Function:");
             egui::ComboBox::from_label("")
-                .selected_text(format!("{:?}", self.kdf_function))
+                .selected_text(&self.kdf_function)
                 .show_ui(ui, |ui| {
-                    ui.selectable_value(&mut self.kdf_function, KeyDerivationFunction::HKDF, "HKDF");
-                    ui.selectable_value(&mut self.kdf_function, KeyDerivationFunction::PBKDF2, "PBKDF2");
-                    ui.selectable_value(&mut self.kdf_function, KeyDerivationFunction::Scrypt, "Scrypt");
-                    ui.selectable_value(&mut self.kdf_function, KeyDerivationFunction::Argon2, "Argon2");
+                    ui.selectable_value(&mut self.kdf_function, "HKDF".to_string(), "HKDF");
+                    ui.selectable_value(&mut self.kdf_function, "PBKDF2".to_string(), "PBKDF2");
+                    ui.selectable_value(&mut self.kdf_function, "Scrypt".to_string(), "Scrypt");
+                    ui.selectable_value(&mut self.kdf_function, "Argon2".to_string(), "Argon2");
                 });
         });
         
@@ -571,12 +570,12 @@ impl AdvancedCryptoWidget {
         ui.horizontal(|ui| {
             ui.label("Algorithm:");
             egui::ComboBox::from_label("")
-                .selected_text(format!("{:?}", self.encryption_algorithm))
+                .selected_text(&self.encryption_algorithm)
                 .show_ui(ui, |ui| {
-                    ui.selectable_value(&mut self.encryption_algorithm, AuthenticatedEncryption::AesGcm, "AES-GCM");
-                    ui.selectable_value(&mut self.encryption_algorithm, AuthenticatedEncryption::ChaCha20Poly1305, "ChaCha20-Poly1305");
-                    ui.selectable_value(&mut self.encryption_algorithm, AuthenticatedEncryption::XSalsa20Poly1305, "XSalsa20-Poly1305");
-                    ui.selectable_value(&mut self.encryption_algorithm, AuthenticatedEncryption::AesCcm, "AES-CCM");
+                    ui.selectable_value(&mut self.encryption_algorithm, "AES-GCM".to_string(), "AES-GCM");
+                    ui.selectable_value(&mut self.encryption_algorithm, "ChaCha20-Poly1305".to_string(), "ChaCha20-Poly1305");
+                    ui.selectable_value(&mut self.encryption_algorithm, "XSalsa20-Poly1305".to_string(), "XSalsa20-Poly1305");
+                    ui.selectable_value(&mut self.encryption_algorithm, "AES-CCM".to_string(), "AES-CCM");
                 });
         });
         

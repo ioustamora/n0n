@@ -670,9 +670,16 @@ impl KeyManagementSystem {
     /// Audit log operation
     async fn audit_log(&self, operation: &str, key_id: &str, related_key_id: Option<&str>) {
         if self.config.audit_all_operations {
-            log::info!("KEY_AUDIT: operation={}, key_id={}, related_key={:?}, timestamp={}", 
+            log::info!("KEY_AUDIT: operation={}, key_id={}, related_key={:?}, timestamp={}",
                 operation, key_id, related_key_id, Utc::now());
         }
+    }
+
+    /// Check if the key management system is empty (has no keys)
+    pub async fn is_empty(&self) -> bool {
+        let master_keys = self.master_keys.read().await;
+        let data_keys = self.data_keys.read().await;
+        master_keys.is_empty() && data_keys.is_empty()
     }
 }
 

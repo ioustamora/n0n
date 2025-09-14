@@ -1032,6 +1032,12 @@ impl CertificateManager {
         permissions.dedup();
         permissions
     }
+
+    /// List all certificates in the manager
+    pub async fn list_certificates(&self) -> Result<Vec<String>, CertificateError> {
+        let certificates = self.certificates.read().await;
+        Ok(certificates.keys().cloned().collect())
+    }
 }
 
 impl Default for CertificateManagerConfig {

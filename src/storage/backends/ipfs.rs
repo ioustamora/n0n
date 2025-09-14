@@ -1,9 +1,7 @@
 use async_trait::async_trait;
-// Note: IPFS client is not Send, so this implementation is temporarily disabled
 use anyhow::{Result, anyhow};
 use std::collections::HashMap;
 use std::io::Cursor;
-use chrono::{DateTime, Utc};
 use ipfs_api_backend_hyper::{IpfsApi, IpfsClient, TryFromUri};
 
 use crate::storage::backend::{StorageBackend, StorageType, ChunkMetadata, IpfsConfig, StorageError};
@@ -84,11 +82,12 @@ impl IpfsBackend {
     }
 }
 
-// IPFS implementation temporarily disabled due to Send trait issues
-// TODO: Fix Send trait issues with ipfs-api-backend-hyper library
+// Temporarily disabled due to Send trait issues with ipfs-api-backend-hyper
+// TODO: Resolve threading issues and re-enable
 #[async_trait]
 impl StorageBackend for IpfsBackend {
     async fn save_chunk(&self, recipient: &str, chunk_hash: &str, data: &[u8]) -> Result<String> {
+        // Temporarily return error due to Send trait issues
         let _ = (recipient, chunk_hash, data);
         Err(anyhow!("IPFS backend temporarily disabled due to Send trait issues with ipfs-api-backend-hyper library"))
     }

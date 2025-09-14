@@ -802,8 +802,8 @@ impl KeyLifecycleManager {
     }
 
     async fn generate_compliance_recommendations(
-        &self, 
-        _standard: &str, 
+        &self,
+        _standard: &str,
         _violations: &[LifecycleEvent]
     ) -> Vec<String> {
         // Placeholder implementation
@@ -812,6 +812,26 @@ impl KeyLifecycleManager {
             "Enable automatic backup for all keys".to_string(),
             "Review and update key lifecycle policies".to_string(),
         ]
+    }
+
+    /// Get active lifecycle policies
+    pub async fn get_active_policies(&self) -> Vec<LifecyclePolicy> {
+        let policies = self.lifecycle_policies.read().await;
+        policies.values().cloned().collect()
+    }
+
+    /// Start background tasks for lifecycle management
+    pub async fn start_background_tasks(&self) -> Result<(), LifecycleError> {
+        // TODO: Implement background task scheduling for key rotation
+        log::info!("Lifecycle background tasks started (placeholder)");
+        Ok(())
+    }
+
+    /// Stop background tasks for lifecycle management
+    pub async fn stop_background_tasks(&self) -> Result<(), LifecycleError> {
+        // TODO: Implement background task cleanup
+        log::info!("Lifecycle background tasks stopped (placeholder)");
+        Ok(())
     }
 }
 

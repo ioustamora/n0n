@@ -229,44 +229,48 @@ pub fn upload_chunk_sftp_auth(
 /// Process and encrypt a file to SFTP storage
 #[allow(clippy::too_many_arguments)]
 pub fn process_file_encrypt_to_sftp(
-    file_path: &Path,
-    root_folder: &Path,
-    recipient_pk_b64: &str,
-    mailbox_id: &str,
-    sender_sk_b64: Option<&str>,
-    host: &str,
-    username: &str,
-    password: &str,
-    remote_base: &str,
-    chunk_size_bytes: usize,
-    progress: Option<(Arc<AtomicUsize>, Arc<AtomicUsize>)>,
-    cancel: Option<Arc<AtomicBool>>,
+    _file_path: &Path,
+    _root_folder: &Path,
+    _recipient_pk_b64: &str,
+    _mailbox_id: &str,
+    _sender_sk_b64: Option<&str>,
+    _host: &str,
+    _username: &str,
+    _password: &str,
+    _remote_base: &str,
+    _chunk_size_bytes: usize,
+    _progress: Option<(Arc<AtomicUsize>, Arc<AtomicUsize>)>,
+    _cancel: Option<Arc<AtomicBool>>,
 ) -> Result<()> {
-    // This is a simplified version - would need full implementation
-    Ok(())
+    // TODO: Implement SFTP file encryption and upload
+    // This is a placeholder implementation
+    log::warn!("process_file_encrypt_to_sftp not yet implemented");
+    Err(anyhow!("SFTP file encryption not yet implemented"))
 }
 
 /// Process and encrypt a file to SFTP storage with authentication
 #[allow(clippy::too_many_arguments)]
 pub fn process_file_encrypt_to_sftp_auth(
-    file_path: &Path,
-    root_folder: &Path,
-    recipient_pk_b64: &str,
-    mailbox_id: &str,
-    sender_sk_b64: Option<&str>,
-    host: &str,
-    username: &str,
-    password: Option<&str>,
-    private_key: Option<&str>,
-    private_key_pass: Option<&str>,
-    expected_host_fp_sha256_b64: Option<&str>,
-    remote_base: &str,
-    chunk_size_bytes: usize,
-    progress: Option<(Arc<AtomicUsize>, Arc<AtomicUsize>)>,
-    cancel: Option<Arc<AtomicBool>>,
+    _file_path: &Path,
+    _root_folder: &Path,
+    _recipient_pk_b64: &str,
+    _mailbox_id: &str,
+    _sender_sk_b64: Option<&str>,
+    _host: &str,
+    _username: &str,
+    _password: Option<&str>,
+    _private_key: Option<&str>,
+    _private_key_pass: Option<&str>,
+    _expected_host_fp_sha256_b64: Option<&str>,
+    _remote_base: &str,
+    _chunk_size_bytes: usize,
+    _progress: Option<(Arc<AtomicUsize>, Arc<AtomicUsize>)>,
+    _cancel: Option<Arc<AtomicBool>>,
 ) -> Result<()> {
-    // This is a simplified version - would need full implementation  
-    Ok(())
+    // TODO: Implement SFTP file encryption and upload with authentication
+    // This is a placeholder implementation
+    log::warn!("process_file_encrypt_to_sftp_auth not yet implemented");
+    Err(anyhow!("SFTP file encryption with auth not yet implemented"))
 }
 
 /// Download a file from SFTP server
@@ -285,23 +289,24 @@ pub fn download_remote_file(host: &str, username: &str, password: &str, remote_p
 pub fn assemble_from_sftp_with_logs(
     host: &str,
     username: &str,
-    password: &str,
-    remote_base: &str,
-    recipient_sk_b64: &str,
-    output_root: &Path,
-    recipient_pk_b64: &str,
+    _password: &str,
+    _remote_base: &str,
+    _recipient_sk_b64: &str,
+    _output_root: &Path,
+    _recipient_pk_b64: &str,
     logs: Arc<Mutex<Vec<String>>>
 ) -> Result<()> {
     if let Ok(mut l) = logs.lock() {
         l.push(format!("Starting SFTP assembly from {}@{}", username, host));
     }
-    
-    // This is a simplified version - would need full implementation
+
+    // TODO: Implement full SFTP file assembly functionality
     if let Ok(mut l) = logs.lock() {
-        l.push("SFTP assembly functionality not yet implemented in refactored version".to_string());
+        l.push("SFTP assembly functionality not yet implemented".to_string());
     }
-    
-    Ok(())
+
+    log::warn!("assemble_from_sftp_with_logs not yet implemented");
+    Err(anyhow!("SFTP assembly not yet implemented"))
 }
 
 /// Assemble files from SFTP with authentication and logging
@@ -309,24 +314,25 @@ pub fn assemble_from_sftp_with_logs(
 pub fn assemble_from_sftp_with_logs_auth(
     host: &str,
     username: &str,
-    password: Option<&str>,
-    private_key: Option<&str>,
-    private_key_pass: Option<&str>,
-    expected_host_fp_sha256_b64: Option<&str>,
-    remote_base: &str,
-    recipient_sk_b64: &str,
-    output_root: &Path,
-    recipient_pk_b64: &str,
+    _password: Option<&str>,
+    _private_key: Option<&str>,
+    _private_key_pass: Option<&str>,
+    _expected_host_fp_sha256_b64: Option<&str>,
+    _remote_base: &str,
+    _recipient_sk_b64: &str,
+    _output_root: &Path,
+    _recipient_pk_b64: &str,
     logs: Arc<Mutex<Vec<String>>>
 ) -> Result<()> {
     if let Ok(mut l) = logs.lock() {
         l.push(format!("Starting SFTP auth assembly from {}@{}", username, host));
     }
-    
-    // This is a simplified version - would need full implementation
+
+    // TODO: Implement full SFTP file assembly with authentication
     if let Ok(mut l) = logs.lock() {
-        l.push("SFTP auth assembly functionality not yet implemented in refactored version".to_string());
+        l.push("SFTP auth assembly functionality not yet implemented".to_string());
     }
-    
-    Ok(())
+
+    log::warn!("assemble_from_sftp_with_logs_auth not yet implemented");
+    Err(anyhow!("SFTP assembly with auth not yet implemented"))
 }

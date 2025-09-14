@@ -2472,6 +2472,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "egui_plot"
+version = "0.27.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a7854b86dc1c2d352c5270db3d600011daa913d6b554141a03939761323288a1"
+dependencies = [
+ "egui",
+]
+
+[[package]]
 name = "either"
 version = "1.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4480,7 +4489,9 @@ dependencies = [
  "ed25519-dalek",
  "eframe",
  "egui",
+ "egui_plot",
  "env_logger",
+ "epaint",
  "flate2",
  "futures",
  "futures-util",
@@ -4492,6 +4503,7 @@ dependencies = [
  "ipfs-api-backend-hyper",
  "log",
  "notify",
+ "num_cpus",
  "p256 0.13.2",
  "parking_lot",
  "pbkdf2 0.12.2",
@@ -4729,6 +4741,16 @@ checksum = "071dfc062690e90b734c0b2273ce72ad0ffa95f0c74596bc250dcfd960262841"
 dependencies = [
  "autocfg",
  "libm",
+]
+
+[[package]]
+name = "num_cpus"
+version = "1.17.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "91df4bbde75afed763b708b7eee1e8e7651e02d97f6d5dd763e89367e957b23b"
+dependencies = [
+ "hermit-abi 0.5.2",
+ "libc",
 ]
 
 [[package]]

@@ -65,7 +65,6 @@ impl AppState {
             StorageType::Ipfs => "IPFS decentralized storage - content-addressed, distributed filesystem",
             StorageType::MultiCloud => "Multi-cloud replication - replicates data across multiple backends",
             StorageType::CachedCloud => "Cached cloud storage - local cache with cloud backing",
-            _ => "Unknown storage backend",
         };
         
         ui.label(egui::RichText::new(description).italics().small());
@@ -88,9 +87,6 @@ impl AppState {
             StorageType::Ipfs => Self::render_ipfs_config(ui, config),
             StorageType::MultiCloud => Self::render_multicloud_config(ui, config),
             StorageType::CachedCloud => Self::render_cached_cloud_config(ui, config),
-            _ => {
-                ui.label("Configuration for this backend is not yet implemented");
-            }
         }
     }
     

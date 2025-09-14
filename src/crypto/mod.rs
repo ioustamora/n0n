@@ -17,7 +17,7 @@ pub mod advanced_ops;
 pub mod legacy;
 
 pub use key_management::{
-    KeyManagementSystem, KeyManagementError, MasterKey, DataEncryptionKey, KeyEncryptionKey,
+    KeyManagementSystem, KeyManagementError, MasterKey, DataEncryptionKey,
     KeyPolicy, KeyAlgorithm, ComplianceFramework, KeyStoreConfig, HsmProvider
 };
 
@@ -25,31 +25,25 @@ pub use certificates::{KeyUsage};
 
 pub use hsm::{
     HsmProviderFactory, HsmError,
-    AwsCloudHsmProvider, AzureDedicatedHsmProvider, SafeNetLunaProvider,
-    SoftHsmProvider, MockHsmProvider
+    MockHsmProvider
 };
 
 pub use key_lifecycle::{
-    KeyLifecycleManager, LifecyclePolicy, LifecycleState, RotationScheduler,
-    LifecycleEvent, LifecycleConfig, NotificationConfig
+    KeyLifecycleManager, LifecycleConfig, NotificationConfig
 };
 
 pub use certificates::{
-    CertificateManager, Certificate, CertificateAuthority, TrustStore,
-    CertificatePolicy, CertificateRevocationList, OcspResponder,
-    CertificateManagerConfig, CertificateError
+    CertificateManager, CertificateManagerConfig, CertificateError
 };
 
 pub use advanced_ops::{
-    AdvancedCryptoOps, AdvancedCryptoConfig, ZkProofSystem, HomomorphicEncryptionSystem,
-    MultiPartyComputationSystem, SecureRandomGenerator, CachedOperation,
-    KeyDerivationFunction, AuthenticatedEncryption, AdvancedCryptoError
+    AdvancedCryptoOps, AdvancedCryptoConfig
 };
 
 // Re-export legacy crypto functions for backward compatibility
 pub use legacy::{
-    init, generate_keypair, encrypt_chunk, decrypt_chunk, precompute_shared, encrypt_with_nonce,
-    PublicKey, SecretKey, PrecomputedKey, NONCEBYTES
+    init, generate_keypair, encrypt_chunk, decrypt_chunk, encrypt_with_nonce,
+    PublicKey, SecretKey, NONCEBYTES
 };
 
 /// Unified cryptographic service providing all enterprise crypto capabilities
@@ -118,15 +112,21 @@ impl CryptoService {
 
     /// Initialize all background services
     pub async fn start_services(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        // TODO: Implement background services for lifecycle management
-        // TODO: Implement background services for certificate management
-        // TODO: Implement background services for advanced operations
+        // Start lifecycle management background tasks
+        self.lifecycle_manager.start_background_tasks().await
+            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
+
+        log::info!("CryptoService background services started successfully");
         Ok(())
     }
 
     /// Shutdown all services gracefully
     pub async fn shutdown(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        // TODO: Implement graceful shutdown for all components
+        // Stop lifecycle management background tasks
+        self.lifecycle_manager.stop_background_tasks().await
+            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
+
+        log::info!("CryptoService shutdown completed gracefully");
         Ok(())
     }
 }

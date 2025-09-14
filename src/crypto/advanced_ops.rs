@@ -836,6 +836,14 @@ impl AdvancedCryptoOps {
         }
         format!("{:x}", hasher.finalize())
     }
+
+    /// Check if the advanced crypto operations are initialized
+    pub async fn is_initialized(&self) -> bool {
+        // Check if any of the advanced features are enabled
+        self.config.enable_zk_proofs ||
+        self.config.enable_homomorphic_encryption ||
+        self.config.enable_multi_party_computation
+    }
 }
 
 // Implementation of supporting systems
