@@ -165,7 +165,8 @@ impl EncryptionManager {
 
                 // Convert secretbox key to ChaCha20Poly1305 key
                 let aead_key = chacha20poly1305_ietf::Key(key.0);
-                let nonce = chacha20poly1305_ietf::Nonce::gen_random();
+                use sodiumoxide::randombytes;
+                let nonce = chacha20poly1305_ietf::Nonce::from_slice(&randombytes::randombytes(chacha20poly1305_ietf::NONCEBYTES)).unwrap();
 
                 let ciphertext = chacha20poly1305_ietf::seal(&processed_data, None, &nonce, &aead_key);
 

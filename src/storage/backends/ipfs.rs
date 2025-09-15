@@ -114,7 +114,9 @@ impl StorageBackend for IpfsBackend {
 
                 Ok::<String, anyhow::Error>(ipfs_hash)
             })
-        }).await??;
+        }).await.map_err(|e| StorageError::BackendError {
+            message: format!("Task join error: {}", e),
+        })??;
 
         // Save the mapping for future retrieval
         self.save_path_mapping(&recipient, &chunk_hash, &ipfs_hash).await?;
@@ -155,7 +157,9 @@ impl StorageBackend for IpfsBackend {
 
                 Ok::<String, anyhow::Error>(metadata_hash)
             })
-        }).await??;
+        }).await.map_err(|e| StorageError::BackendError {
+            message: format!("Task join error: {}", e),
+        })??;
 
         // Save mapping for metadata
         let metadata_key = format!("{}_metadata", chunk_hash);
@@ -168,6 +172,7 @@ impl StorageBackend for IpfsBackend {
     async fn load_chunk(&self, recipient: &str, chunk_hash: &str) -> Result<Vec<u8>> {
         // Get IPFS hash for this chunk
         let ipfs_hash = self.get_ipfs_hash_for_chunk(recipient, chunk_hash).await?;
+        let ipfs_hash_clone = ipfs_hash.clone();
         let client = self.client.clone();
 
         // Use spawn_blocking to handle the non-Send IPFS client
@@ -175,22 +180,27 @@ impl StorageBackend for IpfsBackend {
             let rt = tokio::runtime::Handle::current();
             rt.block_on(async {
                 // Retrieve the chunk from IPFS
-                let data_stream = client.cat(&ipfs_hash)
-                    .map_err(Self::map_ipfs_error)?;
+                let data_stream = client.cat(&ipfs_hash_clone);
 
                 // Collect all bytes from the stream
-                let data: Vec<u8> = data_stream
-                    .try_concat()
-                    .await
-                    .map_err(|e| StorageError::BackendError {
-                        message: format!("Failed to retrieve chunk from IPFS: {}", e),
-                    })?;
+                let mut data = Vec::new();
+                let stream = data_stream;
+                use futures_util::pin_mut;
+                pin_mut!(stream);
+
+                while let Some(chunk) = stream.try_next().await.map_err(|e| StorageError::BackendError {
+                    message: format!("Failed to retrieve chunk from IPFS: {}", e),
+                })? {
+                    data.extend_from_slice(&chunk);
+                }
 
                 Ok::<Vec<u8>, anyhow::Error>(data)
             })
-        }).await??;
+        }).await.map_err(|e| StorageError::BackendError {
+            message: format!("Task join error: {}", e),
+        })??;
 
-        log::debug!("Retrieved chunk {} for {} from IPFS ({})", chunk_hash, recipient, ipfs_hash);
+        log::debug!("Retrieved chunk {} for {} from IPFS ({})", chunk_hash, recipient, &ipfs_hash);
         Ok(data)
     }
 
@@ -198,6 +208,7 @@ impl StorageBackend for IpfsBackend {
         // Get IPFS hash for metadata
         let metadata_key = format!("{}_metadata", chunk_hash);
         let ipfs_hash = self.get_ipfs_hash_for_chunk(recipient, &metadata_key).await?;
+        let ipfs_hash_clone = ipfs_hash.clone();
         let client = self.client.clone();
 
         // Use spawn_blocking to handle the non-Send IPFS client
@@ -205,16 +216,19 @@ impl StorageBackend for IpfsBackend {
             let rt = tokio::runtime::Handle::current();
             rt.block_on(async {
                 // Retrieve the metadata from IPFS
-                let data_stream = client.cat(&ipfs_hash)
-                    .map_err(Self::map_ipfs_error)?;
+                let data_stream = client.cat(&ipfs_hash_clone);
 
                 // Collect all bytes from the stream
-                let data: Vec<u8> = data_stream
-                    .try_concat()
-                    .await
-                    .map_err(|e| StorageError::BackendError {
-                        message: format!("Failed to retrieve metadata from IPFS: {}", e),
-                    })?;
+                let mut data = Vec::new();
+                let stream = data_stream;
+                use futures_util::pin_mut;
+                pin_mut!(stream);
+
+                while let Some(chunk) = stream.try_next().await.map_err(|e| StorageError::BackendError {
+                    message: format!("Failed to retrieve metadata from IPFS: {}", e),
+                })? {
+                    data.extend_from_slice(&chunk);
+                }
 
                 // Deserialize metadata
                 let metadata: ChunkMetadata = serde_json::from_slice(&data)
@@ -224,9 +238,11 @@ impl StorageBackend for IpfsBackend {
 
                 Ok::<ChunkMetadata, anyhow::Error>(metadata)
             })
-        }).await??;
+        }).await.map_err(|e| StorageError::BackendError {
+            message: format!("Task join error: {}", e),
+        })??;
 
-        log::debug!("Retrieved metadata for chunk {} for {} from IPFS ({})", chunk_hash, recipient, ipfs_hash);
+        log::debug!("Retrieved metadata for chunk {} for {} from IPFS ({})", chunk_hash, recipient, &ipfs_hash);
         Ok(metadata)
     }
 
@@ -248,6 +264,7 @@ impl StorageBackend for IpfsBackend {
         let ipfs_hash = self.get_ipfs_hash_for_chunk(recipient, chunk_hash).await?;
         let client = self.client.clone();
         let pin_content = self.pin_content;
+        let ipfs_hash_for_log = ipfs_hash.clone();
 
         // Use spawn_blocking to handle the non-Send IPFS client
         task::spawn_blocking(move || {
@@ -261,7 +278,9 @@ impl StorageBackend for IpfsBackend {
 
                 Ok::<(), anyhow::Error>(())
             })
-        }).await??;
+        }).await.map_err(|e| StorageError::BackendError {
+            message: format!("Task join error: {}", e),
+        })??;
 
         // Also try to remove metadata
         let metadata_key = format!("{}_metadata", chunk_hash);
@@ -276,12 +295,14 @@ impl StorageBackend for IpfsBackend {
                     }
                     Ok::<(), anyhow::Error>(())
                 })
-            }).await??;
+            }).await.map_err(|e| StorageError::BackendError {
+            message: format!("Task join error: {}", e),
+        })??;
         }
 
         // Note: IPFS doesn't actually "delete" content, it just unpins it
         // The content remains accessible by hash until garbage collected
-        log::debug!("Unpinned chunk {} for {} from IPFS ({})", chunk_hash, recipient, ipfs_hash);
+        log::debug!("Unpinned chunk {} for {} from IPFS ({})", chunk_hash, recipient, ipfs_hash_for_log);
         Ok(())
     }
 
@@ -295,7 +316,9 @@ impl StorageBackend for IpfsBackend {
                 client.version().await
                     .map_err(Self::map_ipfs_error)
             })
-        }).await??;
+        }).await.map_err(|e| StorageError::BackendError {
+            message: format!("Task join error: {}", e),
+        })??;
 
         log::info!("IPFS connection successful - Version: {}", version_info.version);
         Ok(())
@@ -319,11 +342,15 @@ impl StorageBackend for IpfsBackend {
             Ok(Ok(version_info)) => {
                 health.insert("status".to_string(), "healthy".to_string());
                 health.insert("version".to_string(), version_info.version);
-                health.insert("commit".to_string(), version_info.commit.unwrap_or_default());
+                health.insert("commit".to_string(), version_info.commit);
             }
-            Ok(Err(e)) | Err(e) => {
+            Ok(Err(e)) => {
                 health.insert("status".to_string(), "error".to_string());
                 health.insert("error".to_string(), format!("{}", e));
+            }
+            Err(e) => {
+                health.insert("status".to_string(), "error".to_string());
+                health.insert("error".to_string(), format!("Task join error: {}", e));
             }
         }
 

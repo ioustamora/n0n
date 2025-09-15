@@ -447,11 +447,11 @@ impl MonitoringService {
                 log::info!("CloudWatch export - would use AWS SDK to send metrics");
                 // For now, log the metrics that would be sent
                 let dashboard_data = self.get_dashboard_data().await?;
-                log::debug!("CloudWatch metrics: {:?}", dashboard_data.system_metrics);
+                log::debug!("CloudWatch metrics: {:?}", dashboard_data.system_health);
             }
             ExportType::Grafana => {
                 // Export to Grafana (similar to Prometheus format)
-                let metrics = self.metric_collector.export_prometheus_format().await?;
+                let metrics = self.metrics_collector.export_prometheus_format().await?;
                 self.send_http_data(&endpoint.url, &metrics, "text/plain").await?;
             }
         }

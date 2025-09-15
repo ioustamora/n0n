@@ -290,13 +290,13 @@ pub fn process_file_encrypt_to_sftp(
         }
 
         // Read chunk data
-        let chunk_data = std::fs::read(&chunk.path)?;
+        let chunk_data = std::fs::read(&chunk.file_name)?;
 
         // Encrypt chunk
         let (encrypted_data, nonce) = encrypt_chunk(&chunk_data, &recipient_pk, &sender_sk)?;
 
         // Create chunk filename
-        let chunk_filename = format!("{}/{}/{}.enc", remote_base, mailbox_id, chunk.hash);
+        let chunk_filename = format!("{}/{}/{}.enc", remote_base, mailbox_id, chunk.chunk_plain_sha256);
 
         // Upload encrypted chunk
         let mut remote_file = sftp.create(Path::new(&chunk_filename))?;
@@ -304,14 +304,14 @@ pub fn process_file_encrypt_to_sftp(
 
         // Create metadata file
         let metadata = serde_json::json!({
-            "hash": chunk.hash,
-            "size": chunk.size,
+            "hash": chunk.chunk_plain_sha256,
+            "size": chunk.file_size,
             "nonce": nonce,
-            "relative_path": chunk.relative_path,
-            "chunk_index": chunk.index
+            "relative_path": chunk.file_name,
+            "chunk_index": chunk.chunk_index
         });
 
-        let metadata_filename = format!("{}/{}/{}.meta", remote_base, mailbox_id, chunk.hash);
+        let metadata_filename = format!("{}/{}/{}.meta", remote_base, mailbox_id, chunk.chunk_plain_sha256);
         let mut meta_file = sftp.create(Path::new(&metadata_filename))?;
         meta_file.write_all(metadata.to_string().as_bytes())?;
 
@@ -321,7 +321,7 @@ pub fn process_file_encrypt_to_sftp(
             total.store(total_chunks, std::sync::atomic::Ordering::Relaxed);
         }
 
-        log::debug!("Uploaded encrypted chunk {}/{}: {}", i + 1, total_chunks, chunk.hash);
+        log::debug!("Uploaded encrypted chunk {}/{}: {}", i + 1, total_chunks, chunk.chunk_plain_sha256);
     }
 
     log::info!("Successfully encrypted and uploaded {} chunks to SFTP", total_chunks);
@@ -402,13 +402,13 @@ pub fn process_file_encrypt_to_sftp_auth(
         }
 
         // Read chunk data
-        let chunk_data = std::fs::read(&chunk.path)?;
+        let chunk_data = std::fs::read(&chunk.file_name)?;
 
         // Encrypt chunk
         let (encrypted_data, nonce) = encrypt_chunk(&chunk_data, &recipient_pk, &sender_sk)?;
 
         // Create chunk filename
-        let chunk_filename = format!("{}/{}/{}.enc", remote_base, mailbox_id, chunk.hash);
+        let chunk_filename = format!("{}/{}/{}.enc", remote_base, mailbox_id, chunk.chunk_plain_sha256);
 
         // Upload encrypted chunk
         let mut remote_file = sftp.create(Path::new(&chunk_filename))?;
@@ -416,14 +416,14 @@ pub fn process_file_encrypt_to_sftp_auth(
 
         // Create metadata file
         let metadata = serde_json::json!({
-            "hash": chunk.hash,
-            "size": chunk.size,
+            "hash": chunk.chunk_plain_sha256,
+            "size": chunk.file_size,
             "nonce": nonce,
-            "relative_path": chunk.relative_path,
-            "chunk_index": chunk.index
+            "relative_path": chunk.file_name,
+            "chunk_index": chunk.chunk_index
         });
 
-        let metadata_filename = format!("{}/{}/{}.meta", remote_base, mailbox_id, chunk.hash);
+        let metadata_filename = format!("{}/{}/{}.meta", remote_base, mailbox_id, chunk.chunk_plain_sha256);
         let mut meta_file = sftp.create(Path::new(&metadata_filename))?;
         meta_file.write_all(metadata.to_string().as_bytes())?;
 
@@ -433,7 +433,7 @@ pub fn process_file_encrypt_to_sftp_auth(
             total.store(total_chunks, std::sync::atomic::Ordering::Relaxed);
         }
 
-        log::debug!("Uploaded encrypted chunk {}/{}: {}", i + 1, total_chunks, chunk.hash);
+        log::debug!("Uploaded encrypted chunk {}/{}: {}", i + 1, total_chunks, chunk.chunk_plain_sha256);
     }
 
     log::info!("Successfully encrypted and uploaded {} chunks to SFTP with auth", total_chunks);
