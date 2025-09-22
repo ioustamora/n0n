@@ -318,35 +318,13 @@ impl KeyLifecycleManager {
 
     /// Start lifecycle manager background services
     pub async fn start(&self) -> Result<(), LifecycleError> {
-        // Start rotation scheduler
-        self.start_rotation_scheduler().await?;
-        
-        // Start compliance monitor if enabled
-        if self.config.enable_compliance_monitoring {
-            self.start_compliance_monitor().await?;
-        }
-        
-        // Start automatic cleanup if enabled
-        if self.config.enable_automatic_cleanup {
-            self.start_cleanup_service().await?;
-        }
-
+        self.start_background_tasks().await?;
         Ok(())
     }
 
     /// Stop lifecycle manager background services
     pub async fn stop(&self) -> Result<(), LifecycleError> {
-        let mut tasks = self.background_tasks.write().await;
-        
-        for (name, handle) in tasks.drain() {
-            handle.abort();
-            log::info!("Stopped background task: {}", name);
-        }
-
-        // Stop scheduler
-        let mut scheduler = self.rotation_scheduler.lock().await;
-        scheduler.running = false;
-
+        self.stop_background_tasks().await?;
         Ok(())
     }
 
@@ -822,15 +800,20 @@ impl KeyLifecycleManager {
 
     /// Start background tasks for lifecycle management
     pub async fn start_background_tasks(&self) -> Result<(), LifecycleError> {
-        // TODO: Implement background task scheduling for key rotation
-        log::info!("Lifecycle background tasks started (placeholder)");
+        self.start_rotation_scheduler().await?;
+        self.start_cleanup_service().await?;
+        log::info!("Lifecycle background tasks started");
         Ok(())
     }
 
     /// Stop background tasks for lifecycle management
     pub async fn stop_background_tasks(&self) -> Result<(), LifecycleError> {
-        // TODO: Implement background task cleanup
-        log::info!("Lifecycle background tasks stopped (placeholder)");
+        let mut tasks = self.background_tasks.write().await;
+        for (name, handle) in tasks.drain() {
+            handle.abort();
+            log::info!("Stopped background task: {}", name);
+        }
+        log::info!("Lifecycle background tasks stopped");
         Ok(())
     }
 }

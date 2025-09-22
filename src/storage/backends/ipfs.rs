@@ -10,11 +10,14 @@ use crate::storage::backend::{StorageBackend, StorageType, ChunkMetadata, IpfsCo
 
 /// IPFS storage backend
 /// Stores chunks and metadata on the InterPlanetary File System (IPFS)
+use tokio::sync::RwLock;
+
 pub struct IpfsBackend {
     client: std::sync::Arc<IpfsClient>,
     config: IpfsConfig,
     api_url: String,
     pin_content: bool,
+    recipient_keys: std::sync::Arc<RwLock<HashMap<String, String>>>,
 }
 
 impl IpfsBackend {
@@ -40,7 +43,76 @@ impl IpfsBackend {
             config,
             api_url,
             pin_content,
+            recipient_keys: std::sync::Arc::new(RwLock::new(HashMap::new())),
         })
+    }
+
+    async fn get_or_create_ipns_key(&self, recipient: &str) -> Result<String> {
+        let mut keys = self.recipient_keys.write().await;
+        if let Some(key) = keys.get(recipient) {
+            return Ok(key.clone());
+        }
+
+        // Key not found, create a new one
+        let key_name = format!("n0n-{}", recipient);
+        let new_key = self.client.key_gen(&key_name, "rsa", 2048).await.map_err(Self::map_ipfs_error)?;
+
+        keys.insert(recipient.to_string(), new_key.id.clone());
+
+        Ok(new_key.id)
+    }
+
+    async fn get_index(&self, recipient: &str) -> Result<HashMap<String, String>> {
+        let key_id = self.get_or_create_ipns_key(recipient).await?;
+
+        // Resolve the IPNS name to get the root hash of the index
+        let resolved = self.client.name_resolve(&key_id, false, false).await.map_err(Self::map_ipfs_error)?;
+        let index_hash = resolved.path;
+
+        // Get the content of the index
+        let index_content_stream = self.client.cat(&index_hash);
+        let index_content: Vec<u8> = index_content_stream
+            .try_fold(Vec::new(), |mut acc, chunk| async move {
+                acc.extend_from_slice(&chunk);
+                Ok(acc)
+            })
+            .await
+            .map_err(Self::map_ipfs_error)?;
+
+        // Deserialize the index
+        let index: HashMap<String, String> = if index_content.is_empty() {
+            HashMap::new()
+        } else {
+            serde_json::from_slice(&index_content).map_err(|e| StorageError::SerializationError {
+                message: format!("Failed to deserialize index: {}", e),
+            })?
+        };
+
+        Ok(index)
+    }
+
+    async fn update_index(&self, recipient: &str, chunk_hash: &str, ipfs_hash: &str) -> Result<()> {
+        let mut index = self.get_index(recipient).await.unwrap_or_default();
+        index.insert(chunk_hash.to_string(), ipfs_hash.to_string());
+
+        // Serialize the index
+        let index_content = serde_json::to_vec(&index).map_err(|e| StorageError::SerializationError {
+            message: format!("Failed to serialize index: {}", e),
+        })?;
+
+        // Add the updated index to IPFS
+        let cursor = Cursor::new(index_content);
+        let add_result = self.client.add(cursor).await.map_err(Self::map_ipfs_error)?;
+        let new_index_hash = add_result.hash;
+
+        // Publish the new index hash to IPNS
+        let key_id = self.get_or_create_ipns_key(recipient).await?;
+        self.client
+            .name_publish(&new_index_hash, &key_id, None, None)
+            .await
+            .map_err(Self::map_ipfs_error)?;
+
+        Ok(())
     }
 
     /// Convert IPFS error to our storage error
@@ -68,20 +140,7 @@ impl IpfsBackend {
         }
     }
 
-    /// Save mapping between chunk_hash and ipfs_hash
-    async fn save_path_mapping(&self, recipient: &str, chunk_hash: &str, ipfs_hash: &str) -> Result<()> {
-        // In a real implementation, this would save the mapping to a persistent store
-        // For now, we'll just log it
-        log::debug!("IPFS mapping: {}:{} -> {}", recipient, chunk_hash, ipfs_hash);
-        Ok(())
-    }
 
-    /// Get IPFS hash for a chunk
-    async fn get_ipfs_hash_for_chunk(&self, _recipient: &str, _chunk_hash: &str) -> Result<String> {
-        // In a real implementation, this would retrieve the mapping from a persistent store
-        // For now, we'll just return an error
-        Err(anyhow!("IPFS mapping not implemented"))
-    }
 }
 
 // IPFS backend implementation using spawn_blocking to handle Send trait issues
@@ -119,7 +178,7 @@ impl StorageBackend for IpfsBackend {
         })??;
 
         // Save the mapping for future retrieval
-        self.save_path_mapping(&recipient, &chunk_hash, &ipfs_hash).await?;
+        self.update_index(&recipient, &chunk_hash, &ipfs_hash).await?;
 
         log::debug!("Saved chunk {} for {} to IPFS: {}", chunk_hash, recipient, ipfs_hash);
         Ok(ipfs_hash)
@@ -163,7 +222,7 @@ impl StorageBackend for IpfsBackend {
 
         // Save mapping for metadata
         let metadata_key = format!("{}_metadata", chunk_hash);
-        self.save_path_mapping(&recipient, &metadata_key, &metadata_hash).await?;
+        self.update_index(&recipient, &metadata_key, &metadata_hash).await?;
 
         log::debug!("Saved metadata for chunk {} for {} to IPFS: {}", chunk_hash, recipient, metadata_hash);
         Ok(())
@@ -171,7 +230,10 @@ impl StorageBackend for IpfsBackend {
 
     async fn load_chunk(&self, recipient: &str, chunk_hash: &str) -> Result<Vec<u8>> {
         // Get IPFS hash for this chunk
-        let ipfs_hash = self.get_ipfs_hash_for_chunk(recipient, chunk_hash).await?;
+        let index = self.get_index(recipient).await?;
+        let ipfs_hash = index.get(chunk_hash).ok_or_else(|| StorageError::ChunkNotFound {
+            chunk_hash: chunk_hash.to_string(),
+        })?.clone();
         let ipfs_hash_clone = ipfs_hash.clone();
         let client = self.client.clone();
 
@@ -207,7 +269,10 @@ impl StorageBackend for IpfsBackend {
     async fn load_metadata(&self, recipient: &str, chunk_hash: &str) -> Result<ChunkMetadata> {
         // Get IPFS hash for metadata
         let metadata_key = format!("{}_metadata", chunk_hash);
-        let ipfs_hash = self.get_ipfs_hash_for_chunk(recipient, &metadata_key).await?;
+        let index = self.get_index(recipient).await?;
+        let ipfs_hash = index.get(&metadata_key).ok_or_else(|| StorageError::ChunkNotFound {
+            chunk_hash: chunk_hash.to_string(),
+        })?.clone();
         let ipfs_hash_clone = ipfs_hash.clone();
         let client = self.client.clone();
 
@@ -247,62 +312,63 @@ impl StorageBackend for IpfsBackend {
     }
 
     async fn list_chunks(&self, recipient: &str) -> Result<Vec<String>> {
-        // Note: IPFS doesn't have native directory/indexing support
-        // In a real implementation, you would need to maintain an index
-        // This could be done by storing an index file on IPFS itself
-        // or using a separate database to track the mappings
-
-        log::warn!("list_chunks for recipient {} - IPFS requires separate indexing mechanism", recipient);
-
-        // For now, return empty list as a placeholder
-        // TODO: Implement proper indexing mechanism for IPFS chunks
-        Ok(vec![])
+        let index = self.get_index(recipient).await?;
+        Ok(index.keys().cloned().collect())
     }
 
     async fn delete_chunk(&self, recipient: &str, chunk_hash: &str) -> Result<()> {
-        // Get IPFS hash for this chunk
-        let ipfs_hash = self.get_ipfs_hash_for_chunk(recipient, chunk_hash).await?;
-        let client = self.client.clone();
-        let pin_content = self.pin_content;
-        let ipfs_hash_for_log = ipfs_hash.clone();
+        let mut index = self.get_index(recipient).await?;
+        if let Some(ipfs_hash) = index.remove(chunk_hash) {
+            // Update the index
+            let index_content = serde_json::to_vec(&index).map_err(|e| StorageError::SerializationError {
+                message: format!("Failed to serialize index: {}", e),
+            })?;
 
-        // Use spawn_blocking to handle the non-Send IPFS client
-        task::spawn_blocking(move || {
-            let rt = tokio::runtime::Handle::current();
-            rt.block_on(async {
-                // Unpin the content if it was pinned
-                if pin_content {
-                    // Note: IPFS pin_rm might fail if content is not pinned, which is fine
-                    let _ = client.pin_rm(&ipfs_hash, false).await;
-                }
+            let cursor = Cursor::new(index_content);
+            let add_result = self.client.add(cursor).await.map_err(Self::map_ipfs_error)?;
+            let new_index_hash = add_result.hash;
 
-                Ok::<(), anyhow::Error>(())
-            })
-        }).await.map_err(|e| StorageError::BackendError {
-            message: format!("Task join error: {}", e),
-        })??;
+            let key_id = self.get_or_create_ipns_key(recipient).await?;
+            self.client
+                .name_publish(&new_index_hash, &key_id, None, None)
+                .await
+                .map_err(Self::map_ipfs_error)?;
 
-        // Also try to remove metadata
-        let metadata_key = format!("{}_metadata", chunk_hash);
-        if let Ok(metadata_hash) = self.get_ipfs_hash_for_chunk(recipient, &metadata_key).await {
+            // Unpin the content
             let client = self.client.clone();
             let pin_content = self.pin_content;
             task::spawn_blocking(move || {
                 let rt = tokio::runtime::Handle::current();
-                rt.block_on(async {
+                rt.block_on(async move {
                     if pin_content {
-                        let _ = client.pin_rm(&metadata_hash, false).await;
+                        let _ = client.pin_rm(&ipfs_hash, false).await;
                     }
                     Ok::<(), anyhow::Error>(())
                 })
             }).await.map_err(|e| StorageError::BackendError {
-            message: format!("Task join error: {}", e),
-        })??;
+                message: format!("Task join error: {}", e),
+            })??;
+
+            // Also try to remove metadata
+            let metadata_key = format!("{}_metadata", chunk_hash);
+            if let Some(metadata_hash) = index.remove(&metadata_key) {
+                let client = self.client.clone();
+                let pin_content = self.pin_content;
+                task::spawn_blocking(move || {
+                    let rt = tokio::runtime::Handle::current();
+                    rt.block_on(async move {
+                        if pin_content {
+                            let _ = client.pin_rm(&metadata_hash, false).await;
+                        }
+                        Ok::<(), anyhow::Error>(())
+                    })
+                }).await.map_err(|e| StorageError::BackendError {
+                message: format!("Task join error: {}", e),
+            })??;
+            }
         }
 
-        // Note: IPFS doesn't actually "delete" content, it just unpins it
-        // The content remains accessible by hash until garbage collected
-        log::debug!("Unpinned chunk {} for {} from IPFS ({})", chunk_hash, recipient, ipfs_hash_for_log);
+        log::debug!("Deleted chunk {} for {} from IPFS", chunk_hash, recipient);
         Ok(())
     }
 
