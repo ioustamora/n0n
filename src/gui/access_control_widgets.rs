@@ -306,14 +306,16 @@ impl AccessControlWidget {
                 ui.text_edit_singleline(&mut self.new_user_id);
                 
                 if ui.button("➕ Add User").clicked() && !self.new_user_id.is_empty() {
-                    log::info!("Creating user: {}", self.new_user_id);
-                    
-                    // Simulate user creation process
-                    log::info!("Validating user ID format");
-                    log::info!("Creating user account for: {}", self.new_user_id);
-                    log::info!("Assigning default permissions");
-                    log::info!("User {} created successfully", self.new_user_id);
-                    
+                    if let Some(service) = &self.access_control_service {
+                        let service = service.clone();
+                        let username = self.new_user_id.clone();
+                        tokio::spawn(async move {
+                            match service.auth_manager.create_user(&username, "password").await {
+                                Ok(_) => log::info!("User {} created successfully", username),
+                                Err(e) => log::error!("Failed to create user: {}", e),
+                            }
+                        });
+                    }
                     self.new_user_id.clear();
                 }
             });

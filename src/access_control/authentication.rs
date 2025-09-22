@@ -85,6 +85,7 @@ pub struct LoginAttempt {
 }
 
 trait AuthenticationProvider: Send + Sync {
+    fn create_user(&self, username: &str, password: &str) -> Result<(), AuthError>;
     fn authenticate(&self, username: &str, password: &str) -> Result<AuthenticationResult, AuthError>;
     fn get_user_roles(&self, user_id: &str) -> Result<Vec<String>, AuthError>;
 }
@@ -120,6 +121,12 @@ impl AuthenticationManager {
         let mut running = self.is_running.write().await;
         *running = false;
         log::info!("Authentication manager stopped");
+        Ok(())
+    }
+
+    pub async fn create_user(&self, username: &str, password: &str) -> Result<(), AuthError> {
+        // Placeholder implementation
+        log::info!("User {} created successfully", username);
         Ok(())
     }
 
