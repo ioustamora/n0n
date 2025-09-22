@@ -23,23 +23,22 @@ pub mod sessions;
 pub mod audit;
 
 pub use rbac::{
-    RoleBasedAccessControl, Role, Permission, RoleAssignment,
+    RoleBasedAccessControl, Role, Permission,
     RBACConfig, RBACError
 };
 
 pub use abac::{
-    AttributeBasedAccessControl, Attribute, AttributeSet, AccessRequest,
-    AccessDecision, ABACConfig, ABACError, ABACPolicy
+    AttributeBasedAccessControl, AttributeSet, AccessRequest,
+    AccessDecision, ABACConfig, ABACError
 };
 
 pub use policies::{
-    PolicyEngine, Policy, PolicyRule, PolicyCondition, PolicyEffect,
+    PolicyEngine,
     PolicyContext, PolicyConfig, PolicyError
 };
 
 pub use authentication::{
-    AuthenticationManager, AuthenticationMethod, MultiFactorAuth,
-    AuthToken, LoginAttempt, AuthConfig, AuthError
+    AuthenticationManager, LoginAttempt, AuthConfig, AuthError
 };
 
 pub use sessions::{
@@ -48,7 +47,7 @@ pub use sessions::{
 };
 
 pub use audit::{
-    AuditLogger, AuditEvent, AuditEventType, AuditQuery,
+    AuditLogger, AuditEvent, AuditEventType,
     AuditConfig, AuditError, AuditResult
 };
 
@@ -561,7 +560,7 @@ impl AccessControlService {
     }
 
     async fn check_security_violations(&self, _request: &AccessControlRequest, _session: &Session) -> Result<Vec<String>, AccessControlError> {
-        let mut violations = Vec::new();
+        let violations = Vec::new();
 
         // Implement additional security checks here
         // - Rate limiting

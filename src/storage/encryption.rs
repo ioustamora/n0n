@@ -2,7 +2,6 @@
 use async_trait::async_trait;
 use serde::{Serialize, Deserialize};
 use sodiumoxide::crypto::secretbox;
-use sodiumoxide::crypto::aead::chacha20poly1305_ietf;
 use std::collections::HashMap;
 use std::sync::Arc;
 use thiserror::Error;

@@ -1,10 +1,9 @@
 use eframe::egui::{self, *};
-use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::monitoring::{
     MonitoringService, AlertSeverity, AlertStatus, HealthStatus, LogLevel,
-    Alert, ComponentHealth, PerformanceMetrics, DashboardData, MetricValue
+    Alert, DashboardData, MetricValue
 };
 
 /// Widget for monitoring dashboard and system health

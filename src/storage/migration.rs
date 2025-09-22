@@ -487,8 +487,8 @@ impl MigrationUtils {
         let source = StorageFactory::create_backend(source_config.clone()).await?;
         
         // Get basic statistics (simplified)
-        let mut total_chunks = 0;
-        let mut total_bytes = 0u64;
+        let total_chunks = 0;
+        let total_bytes = 0u64;
 
         // This would need to be enhanced to actually scan the backend
         // For now, return a placeholder estimate
@@ -533,7 +533,7 @@ impl MigrationUtils {
 }
 
 /// Migration estimate information
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MigrationEstimate {
     pub total_chunks: usize,
     pub total_bytes: u64,

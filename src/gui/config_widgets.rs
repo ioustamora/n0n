@@ -1,10 +1,9 @@
 use eframe::egui;
-use std::collections::HashMap;
 
 use crate::gui::state::AppState;
 use crate::config::{
     profiles::{ConfigurationProfile, ProfileManager},
-    environment::{Environment, EnvironmentConfig, EnvironmentManager},
+    environment::{Environment, EnvironmentManager},
     validation::ConfigValidator,
     import_export::{ConfigExporter, ConfigImporter, ExportFormat},
 };

@@ -1,7 +1,6 @@
 use eframe::egui;
 use std::sync::{Arc, Mutex};
-use crate::storage::{BackupManager, BackupStrategy, BackupSchedule, BackupFrequency, BackupRecord};
-use crate::storage::backend::StorageBackend;
+use crate::storage::{BackupStrategy, BackupFrequency, BackupRecord};
 use chrono::{DateTime, Utc};
 
 #[derive(Default)]

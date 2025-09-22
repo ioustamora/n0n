@@ -1,6 +1,5 @@
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
-use crate::gui::design_system::DesignSystem;
 
 /// Role-based interface customization system
 /// Provides different UI experiences based on user roles and expertise levels

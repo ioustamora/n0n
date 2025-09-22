@@ -393,7 +393,7 @@ impl StorageBackend for WebDavBackend {
         self.ensure_directory(&chunk_dir).await?;
         self.ensure_directory(&metadata_dir).await?;
 
-        let mut handles: Vec<tokio::task::JoinHandle<Result<String>>> = Vec::new();
+        let handles: Vec<tokio::task::JoinHandle<Result<String>>> = Vec::new();
         let mut results = Vec::new();
 
         // Process in smaller batches to avoid overwhelming the server

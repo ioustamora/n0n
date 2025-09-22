@@ -1,10 +1,10 @@
 use hkdf::Hkdf;
-use pbkdf2::{pbkdf2_hmac, pbkdf2_hmac_array};
-use scrypt::{Scrypt, Params as ScryptParams};
-use argon2::{Argon2, PasswordHash, PasswordHasher as Argon2PasswordHasher, PasswordVerifier};
+use pbkdf2::pbkdf2_hmac;
+use scrypt::Params as ScryptParams;
+use argon2::{Argon2, PasswordVerifier};
 use sha2::{Sha256, Sha512};
-use hmac::{Hmac, Mac};
-use zeroize::{Zeroize, ZeroizeOnDrop};
+use hmac::Mac;
+use zeroize::Zeroize;
 use anyhow::{Result, anyhow};
 use std::time::Instant;
 use base64::Engine;

@@ -1,3 +1,3 @@
 pub mod tabs;
 
-pub use tabs::{TabSystem, Tab, TransitionState, TabConfig};
+pub use tabs::{TabSystem, Tab, TabConfig};

@@ -1,7 +1,6 @@
 use crate::model::ChunkMeta;
 use crate::utils::{compute_sha256, encode_base64, read_file_to_bytes};
 use std::path::Path;
-use std::collections::HashSet;
 use anyhow::Result;
 use rayon::prelude::*;
 

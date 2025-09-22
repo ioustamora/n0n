@@ -1,5 +1,5 @@
 use crate::gui::notifications::NotificationManager;
-use crate::gui::data_visualization::{DataVisualization, SystemMetrics, StorageAnalytics};
+use crate::gui::data_visualization::{DataVisualization, StorageAnalytics};
 
 pub struct DashboardState {
     pub system_status: SystemStatusWidget,
@@ -160,7 +160,7 @@ impl DashboardState {
         let mut analytics = StorageAnalytics::default();
 
         // Mock data - in real implementation this would collect actual analytics
-        use std::collections::HashMap;
+        
 
         analytics.total_files = 1250;
         analytics.total_size_bytes = 2_500_000_000; // 2.5 GB

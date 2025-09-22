@@ -1,4 +1,4 @@
-use zeroize::{Zeroize, ZeroizeOnDrop};
+use zeroize::Zeroize;
 use std::alloc::{self, Layout};
 use std::ptr;
 use anyhow::{Result, anyhow};
@@ -158,8 +158,8 @@ impl SecureVec {
     }
 
     /// Create from existing data
-    pub fn from_vec(mut data: Vec<u8>) -> Self {
-        let mut result = Self {
+    pub fn from_vec(data: Vec<u8>) -> Self {
+        let result = Self {
             data,
             secure_memory: None,
             use_secure_allocation: false,
@@ -345,7 +345,7 @@ impl MemoryProtection {
         #[cfg(windows)]
         {
             use winapi::um::wincrypt::*;
-            use winapi::um::winnt::*;
+            
             use std::ptr;
             
             unsafe {
@@ -416,14 +416,14 @@ impl SecureStringBuilder {
 
     /// Add a string part
     pub fn append_str(&mut self, s: &str) {
-        let mut secure_vec = SecureVec::from_vec(s.as_bytes().to_vec());
+        let secure_vec = SecureVec::from_vec(s.as_bytes().to_vec());
         self.total_len += s.len();
         self.parts.push(secure_vec);
     }
 
     /// Add bytes
     pub fn append_bytes(&mut self, bytes: &[u8]) {
-        let mut secure_vec = SecureVec::from_vec(bytes.to_vec());
+        let secure_vec = SecureVec::from_vec(bytes.to_vec());
         self.total_len += bytes.len();
         self.parts.push(secure_vec);
     }

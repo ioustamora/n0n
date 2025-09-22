@@ -10,7 +10,7 @@ use crate::gui::notifications::NotificationManager;
 use crate::gui::progressive_disclosure::ProgressiveDisclosureManager;
 use crate::gui::dashboard::DashboardState;
 use crate::gui::design_system::DesignSystem;
-use crate::gui::role_based_ui::{RoleBasedUIManager, UserProfile};
+use crate::gui::role_based_ui::RoleBasedUIManager;
 use crate::gui::intelligent_config::IntelligentConfigManager;
 use crate::gui::adaptive_ui::AdaptiveUIManager;
 use crate::gui::components::{TabSystem, Tab, TabConfig};

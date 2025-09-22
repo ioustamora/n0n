@@ -9,8 +9,8 @@
 //! - Distributed tracing and observability
 
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::RwLock;
 use serde::{Serialize, Deserialize};
 use chrono::{DateTime, Utc};
@@ -23,33 +23,30 @@ pub mod logs;
 pub mod performance;
 
 pub use metrics::{
-    MetricsCollector, MetricType, MetricValue, TimeSeriesData, 
-    MetricsConfig, MetricsError, MetricLabel, MetricThreshold
+    MetricsCollector, MetricValue, 
+    MetricsConfig, MetricsError
 };
 
 pub use alerts::{
-    AlertManager, Alert, AlertRule, AlertSeverity, AlertStatus,
-    NotificationChannel, AlertHistory, AlertConfig, AlertError
+    AlertManager, Alert, AlertSeverity, AlertStatus, AlertConfig, AlertError
 };
 
 pub use health::{
-    HealthChecker, HealthCheck, HealthStatus, HealthReport,
+    HealthChecker, HealthStatus, HealthReport,
     ComponentHealth, HealthConfig, HealthError
 };
 
 pub use tracing::{
-    TracingManager, Span, TraceContext, TracingConfig,
-    SpanEvent, TraceError, DistributedTrace
+    TracingManager, Span, TracingConfig, TraceError
 };
 
 pub use logs::{
-    LogAggregator, LogEntry, LogLevel, LogFilter,
+    LogAggregator, LogEntry, LogLevel,
     LogConfig, LogError, StructuredLog
 };
 
 pub use performance::{
-    PerformanceProfiler, PerformanceMetrics, ProfileReport,
-    ResourceUsage, PerformanceConfig, PerformanceError
+    PerformanceProfiler, PerformanceMetrics, ProfileReport, PerformanceConfig, PerformanceError
 };
 
 /// Unified monitoring service providing all observability capabilities

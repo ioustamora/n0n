@@ -2,7 +2,6 @@ use async_trait::async_trait;
 use anyhow::{Result, anyhow};
 use std::collections::HashMap;
 use std::sync::Arc;
-use chrono::Utc;
 use futures::future::join_all;
 
 use crate::storage::backend::{StorageBackend, StorageType, ChunkMetadata, ReplicationConfig, ConsistencyLevel, ReplicationStrategy, StorageError};

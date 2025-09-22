@@ -3,7 +3,6 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use serde::{Serialize, Deserialize};
 use chrono::{DateTime, Utc};
-use uuid::Uuid;
 
 /// Role-Based Access Control (RBAC) system
 #[derive(Clone)]

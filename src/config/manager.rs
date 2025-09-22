@@ -1,7 +1,6 @@
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 use anyhow::{Result, anyhow};
-use serde::{Serialize, Deserialize};
 
 use crate::config::{AppConfig, CryptoConfig, GuiConfig, LoggingConfig, ProfileManager, ConfigValidator};
 

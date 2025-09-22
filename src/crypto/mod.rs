@@ -17,23 +17,18 @@ pub mod advanced_ops;
 pub mod legacy;
 
 pub use key_management::{
-    KeyManagementSystem, KeyManagementError, MasterKey, DataEncryptionKey,
-    KeyPolicy, KeyAlgorithm, ComplianceFramework, KeyStoreConfig, HsmProvider
+    KeyManagementSystem, KeyAlgorithm, ComplianceFramework, KeyStoreConfig
 };
 
 pub use certificates::{KeyUsage};
 
-pub use hsm::{
-    HsmProviderFactory, HsmError,
-    MockHsmProvider
-};
 
 pub use key_lifecycle::{
-    KeyLifecycleManager, LifecycleConfig, NotificationConfig
+    KeyLifecycleManager, LifecycleConfig
 };
 
 pub use certificates::{
-    CertificateManager, CertificateManagerConfig, CertificateError
+    CertificateManager, CertificateManagerConfig
 };
 
 pub use advanced_ops::{

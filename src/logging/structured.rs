@@ -1,7 +1,7 @@
 use serde::{Serialize, Deserialize};
 use serde_json::Value;
 use std::collections::HashMap;
-use tracing::{Event, Subscriber};
+use tracing::Subscriber;
 use tracing_subscriber::Layer;
 
 /// Structured log entry for JSON output

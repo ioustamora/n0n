@@ -1,8 +1,9 @@
 use async_trait::async_trait;
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use std::collections::HashMap;
 use std::io::Cursor;
-use ipfs_api_backend_hyper::{IpfsApi, IpfsClient, TryFromUri};
+use ipfs_api_backend_hyper::{IpfsApi, IpfsClient, TryFromUri, KeyType};
+
 use tokio::task;
 use futures_util::TryStreamExt;
 
@@ -55,7 +56,13 @@ impl IpfsBackend {
 
         // Key not found, create a new one
         let key_name = format!("n0n-{}", recipient);
-        let new_key = self.client.key_gen(&key_name, "rsa", 2048).await.map_err(Self::map_ipfs_error)?;
+        let client = self.client.clone();
+        let new_key = task::spawn_blocking(move || {
+            let rt = tokio::runtime::Handle::current();
+            rt.block_on(async {
+                client.key_gen(&key_name, KeyType::Rsa, 2048).await.map_err(Self::map_ipfs_error)
+            })
+        }).await??;
 
         keys.insert(recipient.to_string(), new_key.id.clone());
 
@@ -65,19 +72,30 @@ impl IpfsBackend {
     async fn get_index(&self, recipient: &str) -> Result<HashMap<String, String>> {
         let key_id = self.get_or_create_ipns_key(recipient).await?;
 
-        // Resolve the IPNS name to get the root hash of the index
-        let resolved = self.client.name_resolve(&key_id, false, false).await.map_err(Self::map_ipfs_error)?;
+        let client = self.client.clone();
+        let key_id_clone = key_id.clone();
+        let resolved = task::spawn_blocking(move || {
+            let rt = tokio::runtime::Handle::current();
+            rt.block_on(async {
+                client.name_resolve(Some(&key_id_clone), false, false).await.map_err(Self::map_ipfs_error)
+            })
+        }).await??;
         let index_hash = resolved.path;
 
-        // Get the content of the index
-        let index_content_stream = self.client.cat(&index_hash);
-        let index_content: Vec<u8> = index_content_stream
-            .try_fold(Vec::new(), |mut acc, chunk| async move {
-                acc.extend_from_slice(&chunk);
-                Ok(acc)
+        let client = self.client.clone();
+        let index_content: Vec<u8> = task::spawn_blocking(move || {
+            let rt = tokio::runtime::Handle::current();
+            rt.block_on(async {
+                let index_content_stream = client.cat(&index_hash);
+                index_content_stream
+                    .try_fold(Vec::new(), |mut acc, chunk| async move {
+                        acc.extend_from_slice(&chunk);
+                        Ok(acc)
+                    })
+                    .await
+                    .map_err(Self::map_ipfs_error)
             })
-            .await
-            .map_err(Self::map_ipfs_error)?;
+        }).await??;
 
         // Deserialize the index
         let index: HashMap<String, String> = if index_content.is_empty() {
@@ -100,17 +118,29 @@ impl IpfsBackend {
             message: format!("Failed to serialize index: {}", e),
         })?;
 
-        // Add the updated index to IPFS
-        let cursor = Cursor::new(index_content);
-        let add_result = self.client.add(cursor).await.map_err(Self::map_ipfs_error)?;
-        let new_index_hash = add_result.hash;
+        let client = self.client.clone();
+        let new_index_hash = task::spawn_blocking(move || {
+            let rt = tokio::runtime::Handle::current();
+            rt.block_on(async {
+                // Add the updated index to IPFS
+                let cursor = Cursor::new(index_content);
+                let add_result = client.add(cursor).await.map_err(Self::map_ipfs_error)?;
+                Ok::<_, anyhow::Error>(add_result.hash)
+            })
+        }).await??;
 
-        // Publish the new index hash to IPNS
+        let client = self.client.clone();
         let key_id = self.get_or_create_ipns_key(recipient).await?;
-        self.client
-            .name_publish(&new_index_hash, &key_id, None, None)
-            .await
-            .map_err(Self::map_ipfs_error)?;
+        task::spawn_blocking(move || {
+            let rt = tokio::runtime::Handle::current();
+            rt.block_on(async {
+                // Publish the new index hash to IPNS
+                client
+                    .name_publish(&new_index_hash, false, None, None, Some(&key_id))
+                    .await
+                    .map_err(Self::map_ipfs_error)
+            })
+        }).await??;
 
         Ok(())
     }
@@ -324,15 +354,28 @@ impl StorageBackend for IpfsBackend {
                 message: format!("Failed to serialize index: {}", e),
             })?;
 
-            let cursor = Cursor::new(index_content);
-            let add_result = self.client.add(cursor).await.map_err(Self::map_ipfs_error)?;
-            let new_index_hash = add_result.hash;
+            let client = self.client.clone();
+            let new_index_hash = task::spawn_blocking(move || {
+                let rt = tokio::runtime::Handle::current();
+                rt.block_on(async {
+                    let cursor = Cursor::new(index_content);
+                    let add_result = client.add(cursor).await.map_err(Self::map_ipfs_error)?;
+                    Ok::<_, anyhow::Error>(add_result.hash)
+                })
+            }).await??;
 
+            let client = self.client.clone();
             let key_id = self.get_or_create_ipns_key(recipient).await?;
-            self.client
-                .name_publish(&new_index_hash, &key_id, None, None)
-                .await
-                .map_err(Self::map_ipfs_error)?;
+            let client = self.client.clone();
+            task::spawn_blocking(move || {
+                let rt = tokio::runtime::Handle::current();
+                rt.block_on(async move {
+                    client
+                        .name_publish(&new_index_hash, false, None, None, Some(&key_id))
+                        .await
+                        .map_err(Self::map_ipfs_error)
+                })
+            }).await??;
 
             // Unpin the content
             let client = self.client.clone();
@@ -345,9 +388,7 @@ impl StorageBackend for IpfsBackend {
                     }
                     Ok::<(), anyhow::Error>(())
                 })
-            }).await.map_err(|e| StorageError::BackendError {
-                message: format!("Task join error: {}", e),
-            })??;
+            }).await??;
 
             // Also try to remove metadata
             let metadata_key = format!("{}_metadata", chunk_hash);
@@ -362,9 +403,7 @@ impl StorageBackend for IpfsBackend {
                         }
                         Ok::<(), anyhow::Error>(())
                     })
-                }).await.map_err(|e| StorageError::BackendError {
-                message: format!("Task join error: {}", e),
-            })??;
+                }).await??;
             }
         }
 

@@ -25,26 +25,8 @@ pub mod components;
 pub use state::AppState;
 
 // Re-export enhanced state management
-pub use state_manager::{
-    StateManager, StateMessage, StateChange,
-    GuiState, FileOperationsState, StorageState,
-    ConfigUIState, MigrationState, MonitoringState,
-    ProgressState, ConnectionStatus, MigrationStatus,
-    AlertNotification, AlertLevel
-};
 
 // Re-export new UI components
-pub use navigation::MainTab;
-pub use notifications::{NotificationManager, Notification, NotificationLevel};
-pub use progressive_disclosure::{ProgressiveDisclosure, ProgressiveDisclosureManager};
-pub use dashboard::DashboardState;
-pub use design_system::DesignSystem;
-pub use storage_wizard::{StorageWizard, StorageWizardStep};
-pub use data_visualization::{DataVisualization, SystemMetrics, StorageAnalytics};
-pub use role_based_ui::{RoleBasedUIManager, UserProfile, UserRole, ExpertiseLevel};
-pub use intelligent_config::IntelligentConfigManager;
-pub use adaptive_ui::AdaptiveUIManager;
-pub use components::{TabSystem, Tab, TransitionState, TabConfig};
 
 use eframe::egui;
 use std::path::PathBuf;

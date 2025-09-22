@@ -3,9 +3,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::access_control::{
-    AccessControlService, Role, Permission, RoleAssignment,
-    AccessControlRequest, AccessContext, ServiceStatistics,
-    ABACPolicy, Session, AuditEvent, AuditEventType, AuditResult
+    AccessControlService, Role, Permission, ServiceStatistics, Session, AuditEvent, AuditEventType, AuditResult
 };
 use crate::gui::components::{TabSystem, Tab, TabConfig};
 
@@ -74,7 +72,7 @@ pub struct TestAccessRequest {
 impl Default for AccessControlWidget {
     fn default() -> Self {
         use chrono::Utc;
-        use uuid::Uuid;
+        
         
         // Initialize tab system
         let tabs = vec![

@@ -350,7 +350,7 @@ impl StorageBackend for AzureBackend {
             return Ok(Vec::new());
         }
 
-        let mut handles: Vec<tokio::task::JoinHandle<Result<String>>> = Vec::new();
+        let handles: Vec<tokio::task::JoinHandle<Result<String>>> = Vec::new();
         let mut results: Vec<String> = Vec::new();
 
         // Process in smaller batches to avoid overwhelming the API

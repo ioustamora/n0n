@@ -1,4 +1,4 @@
-use egui::{Color32, TextStyle, Rounding, Stroke, emath::Rect};
+use egui::{Color32, Rounding, Stroke};
 use serde::{Deserialize, Serialize};
 
 // Custom serialization for Color32
@@ -104,7 +104,7 @@ impl<'de> Deserialize<'de> for ColorPalette {
     where
         D: serde::Deserializer<'de>,
     {
-        use serde::de::{self, MapAccess, Visitor};
+        use serde::de::{MapAccess, Visitor};
         use std::fmt;
 
         struct ColorPaletteVisitor;

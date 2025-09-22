@@ -9,12 +9,6 @@ pub mod analytics;
 pub mod backup;
 
 // Re-export main functions for backward compatibility
-pub use local::*;
-pub use sftp::*;
-pub use encryption::*;
 
 // Re-export new storage abstractions
-pub use backend::{StorageBackend, StorageType, StorageConfig, ChunkMetadata, StorageError};
-pub use factory::{StorageFactory, StorageManager};
-pub use backends::{LocalBackend, SftpBackend, S3Backend};
-pub use backup::{BackupManager, BackupStrategy, BackupSchedule, BackupRecord, BackupFrequency};
+pub use self::backup::{BackupStrategy, BackupRecord, BackupFrequency};

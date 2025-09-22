@@ -37,7 +37,7 @@
 //! ```
 
 use zeroize::{Zeroize, ZeroizeOnDrop};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::SystemTime;
 use anyhow::{Result, anyhow};
 
 pub mod memory;
@@ -502,7 +502,7 @@ impl SessionManager {
     /// Remove a session
     pub fn remove_session(&self, session_id: &str) -> Result<bool> {
         if let Ok(mut sessions) = self.sessions.write() {
-            if let Some(mut session) = sessions.remove(session_id) {
+            if let Some(session) = sessions.remove(session_id) {
                 session.clear();
                 Ok(true)
             } else {
@@ -525,7 +525,7 @@ impl SessionManager {
                 .collect();
 
             for session_id in expired_sessions {
-                if let Some(mut session) = sessions.remove(&session_id) {
+                if let Some(session) = sessions.remove(&session_id) {
                     session.clear();
                     removed_count += 1;
                 }
