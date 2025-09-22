@@ -273,32 +273,29 @@ impl Drop for PerformanceTimer {
 }
 
 /// Global performance monitor
-static mut PERFORMANCE_MONITOR: Option<Arc<PerformanceMonitor>> = None;
-static PERF_INIT: std::sync::Once = std::sync::Once::new();
+static PERFORMANCE_MONITOR: Mutex<Option<Arc<PerformanceMonitor>>> = Mutex::new(None);
 
 /// Initialize the global performance monitor
 pub fn init_performance_monitor(enabled: bool) {
-    PERF_INIT.call_once(|| {
-        unsafe {
-            PERFORMANCE_MONITOR = Some(Arc::new(PerformanceMonitor::new(enabled)));
-        }
-    });
+    let mut monitor = PERFORMANCE_MONITOR.lock().unwrap();
+    *monitor = Some(Arc::new(PerformanceMonitor::new(enabled)));
 }
 
 /// Get the global performance monitor
-pub fn get_performance_monitor() -> Option<Arc<PerformanceMonitor>> {
-    unsafe { PERFORMANCE_MONITOR.as_ref().cloned() }
+pub fn with_performance_monitor<F, R>(f: F) -> Option<R>
+where
+    F: FnOnce(&Arc<PerformanceMonitor>) -> R,
+{
+    PERFORMANCE_MONITOR.lock().unwrap().as_ref().map(f)
 }
 
 /// Create a performance timer for an operation
 #[macro_export]
 macro_rules! perf_timer {
     ($operation:expr) => {
-        let _perf_timer = if let Some(monitor) = $crate::logging::performance::get_performance_monitor() {
-            Some($crate::logging::performance::PerformanceTimer::new(monitor, $operation.to_string()))
-        } else {
-            None
-        };
+        let _perf_timer = $crate::logging::performance::with_performance_monitor(|monitor| {
+            Some($crate::logging::performance::PerformanceTimer::new(monitor.clone(), $operation.to_string()))
+        }).flatten();
     };
 }
 
@@ -306,11 +303,12 @@ macro_rules! perf_timer {
 #[macro_export]
 macro_rules! perf_record {
     ($operation:expr, $duration:expr) => {
-        if let Some(monitor) = $crate::logging::performance::get_performance_monitor() {
+        $crate::logging::performance::with_performance_monitor(|monitor| {
+            let monitor = monitor.clone();
             tokio::spawn(async move {
                 monitor.record_measurement($operation, $duration).await;
             });
-        }
+        });
     };
 }
 

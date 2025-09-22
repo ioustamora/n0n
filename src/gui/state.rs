@@ -13,6 +13,7 @@ use crate::gui::design_system::DesignSystem;
 use crate::gui::role_based_ui::{RoleBasedUIManager, UserProfile};
 use crate::gui::intelligent_config::IntelligentConfigManager;
 use crate::gui::adaptive_ui::AdaptiveUIManager;
+use crate::gui::components::{TabSystem, Tab, TabConfig};
 
 /// Configuration for different storage backends in the GUI
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
@@ -103,10 +104,11 @@ pub struct StorageBackendConfig {
     pub stats_retention_days: u32,
 }
 
-#[derive(Default)]
+use crate::gui::migration_widgets::MigrationState;
+
 pub struct AppState {
-    // Navigation state
-    pub active_tab: MainTab,
+    // Enhanced navigation state
+    pub main_tab_system: TabSystem<MainTab>,
     pub notifications: NotificationManager,
     pub progressive_disclosure: ProgressiveDisclosureManager,
     pub dashboard_state: DashboardState,
@@ -114,6 +116,13 @@ pub struct AppState {
     pub role_based_ui: RoleBasedUIManager,
     pub intelligent_config: IntelligentConfigManager,
     pub adaptive_ui: AdaptiveUIManager,
+
+    // Legacy navigation state (for backwards compatibility)
+    pub active_tab: MainTab,
+
+    // Unsaved changes tracking
+    pub unsaved_changes: std::collections::HashMap<String, bool>,
+    pub last_auto_save: std::time::Instant,
 
     // Legacy state (keeping for compatibility)
     pub selected_file: Option<PathBuf>,
@@ -166,6 +175,62 @@ pub struct AppState {
     pub key_management_widget: crate::gui::crypto_widgets::KeyManagementWidget,
     pub certificate_management_widget: crate::gui::crypto_widgets::CertificateManagementWidget,
     pub advanced_crypto_widget: crate::gui::crypto_widgets::AdvancedCryptoWidget,
+    pub migration_state: Arc<Mutex<MigrationState>>,
+}
+
+impl Default for AppState {
+    fn default() -> Self {
+        Self {
+            main_tab_system: TabSystem::default(),
+            notifications: NotificationManager::default(),
+            progressive_disclosure: ProgressiveDisclosureManager::default(),
+            dashboard_state: DashboardState::default(),
+            design_system: DesignSystem::default(),
+            role_based_ui: RoleBasedUIManager::default(),
+            intelligent_config: IntelligentConfigManager::default(),
+            adaptive_ui: AdaptiveUIManager::default(),
+            active_tab: MainTab::default(),
+            unsaved_changes: std::collections::HashMap::new(),
+            last_auto_save: std::time::Instant::now(),
+            selected_file: None,
+            selected_folder: None,
+            recipient_pk: String::new(),
+            recipient_sk: String::new(),
+            sender_sk: String::new(),
+            chunk_size_mb: 10,
+            output_dir: String::new(),
+            auto_watch: false,
+            storage_backend_type: StorageType::Local,
+            logs: Arc::new(Mutex::new(Vec::new())),
+            storage_configs: HashMap::new(),
+            storage_manager: None,
+            current_backend_health: Arc::new(Mutex::new(HashMap::new())),
+            watcher_running: false,
+            watcher_stop: None,
+            watcher_handle: None,
+            job_progress_total: None,
+            job_progress_done: None,
+            job_cancel: None,
+            job_running: false,
+            job_last_label: String::new(),
+            job_pause: None,
+            file_est_total: None,
+            file_start_done: None,
+            search_hash: String::new(),
+            search_base: String::new(),
+            skip_hidden: false,
+            dry_run: false,
+            file_status: Arc::new(Mutex::new(String::new())),
+            watcher_debounce_ms: 1000,
+            estimated_total_chunks: None,
+            config_state: None,
+            backup_state: None,
+            key_management_widget: crate::gui::crypto_widgets::KeyManagementWidget::default(),
+            certificate_management_widget: crate::gui::crypto_widgets::CertificateManagementWidget::default(),
+            advanced_crypto_widget: crate::gui::crypto_widgets::AdvancedCryptoWidget::default(),
+            migration_state: Arc::new(Mutex::new(MigrationState::default())),
+        }
+    }
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -257,27 +322,43 @@ impl Settings {
 
 impl AppState {
     pub fn new() -> Self {
-        let mut app = AppState::default();
+        let mut app = Self::default();
 
-        // Initialize new UI components
-        app.active_tab = MainTab::Dashboard;
-        app.notifications = NotificationManager::new();
-        app.progressive_disclosure = ProgressiveDisclosureManager::new();
-        app.dashboard_state = DashboardState::new();
-        app.design_system = DesignSystem::new();
-        app.role_based_ui = RoleBasedUIManager::new();
-        app.intelligent_config = IntelligentConfigManager::new();
-        app.adaptive_ui = AdaptiveUIManager::new();
+        // Initialize enhanced tab system (override the default empty one)
+        let main_tabs = vec![
+            Tab::new(MainTab::Dashboard, "🏠 Dashboard")
+                .with_tooltip("System overview and quick actions"),
+            Tab::new(MainTab::Storage, "💾 Storage")
+                .with_tooltip("Storage backends and file operations"),
+            Tab::new(MainTab::Security, "🔒 Security")
+                .with_tooltip("Encryption, access control, and keys"),
+            Tab::new(MainTab::Backup, "🗄️ Backup")
+                .with_tooltip("Backup scheduling and disaster recovery"),
+            Tab::new(MainTab::Monitoring, "📊 Monitoring")
+                .with_tooltip("Analytics, health, and performance"),
+            Tab::new(MainTab::Settings, "⚙️ Settings")
+                .with_tooltip("Application preferences and profiles"),
+        ];
 
-        // Legacy initialization
-        app.chunk_size_mb = 10;
-        app.watcher_debounce_ms = 1000;
+        let tab_config = TabConfig {
+            show_icons: true,
+            show_badges: true,
+            enable_animations: true,
+            tab_height: 40.0,
+            tab_spacing: 8.0,
+            transition_duration: std::time::Duration::from_millis(200),
+            keyboard_shortcuts: true,
+        };
+
+        app.main_tab_system = TabSystem::new(main_tabs, tab_config)
+            .with_active_tab(&MainTab::Dashboard);
         app.storage_backend_type = StorageType::Local;
         app.config_state = None; // Will be initialized on first use
         app.backup_state = None; // Will be initialized on first use
         app.key_management_widget = crate::gui::crypto_widgets::KeyManagementWidget::default();
         app.certificate_management_widget = crate::gui::crypto_widgets::CertificateManagementWidget::default();
         app.advanced_crypto_widget = crate::gui::crypto_widgets::AdvancedCryptoWidget::default();
+        app.migration_state = Arc::new(Mutex::new(MigrationState::default()));
         
         // Initialize default storage configs
         app.storage_configs.insert(StorageType::Local, StorageBackendConfig::default());
@@ -312,6 +393,9 @@ impl AppState {
 
 impl eframe::App for AppState {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Auto-save functionality
+        self.try_auto_save();
+
         // Render toast notifications
         self.notifications.render_toast_notifications(ctx);
 
@@ -331,13 +415,21 @@ impl eframe::App for AppState {
 
             ui.separator();
 
-            // Tab navigation
-            self.render_main_navigation(ui);
+            // Enhanced tab navigation with transition support
+            self.render_enhanced_navigation(ui);
 
             ui.separator();
 
-            // Tab content
-            match self.active_tab {
+            // Tab content with transition awareness
+            let current_tab = self.main_tab_system.active_tab_id()
+                .cloned()
+                .unwrap_or(MainTab::Dashboard);
+
+            self.active_tab = current_tab; // Keep legacy field in sync
+
+            // Only render content if not transitioning or show transition effect
+            if !self.main_tab_system.is_transitioning() {
+                match current_tab {
                 MainTab::Dashboard => {
                     self.render_dashboard_tab(ui);
                 }
@@ -356,12 +448,34 @@ impl eframe::App for AppState {
                 MainTab::Settings => {
                     self.render_settings_tab(ui);
                 }
+                }
+            } else {
+                // Show transition loading state
+                self.render_transition_placeholder(ui);
             }
         });
     }
 }
 
 impl AppState {
+    /// Enhanced navigation rendering with transitions and animations
+    fn render_enhanced_navigation(&mut self, ui: &mut egui::Ui) {
+        // Handle tab system rendering and get clicked tab
+        let clicked_tab = self.main_tab_system.render(ui);
+        if let Some(tab_id) = clicked_tab {
+            // Check for unsaved changes before switching
+            if self.has_unsaved_changes() {
+                self.show_unsaved_changes_dialog(&tab_id);
+            } else {
+                self.switch_to_tab(tab_id);
+            }
+        }
+
+        // Update tab states based on application state
+        self.update_tab_states();
+    }
+
+    /// Legacy navigation method for backwards compatibility
     fn render_main_navigation(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             for tab in MainTab::all() {
@@ -378,6 +492,218 @@ impl AppState {
                     }
                 }
             }
+        });
+    }
+
+    /// Switch to a new tab with proper state management
+    fn switch_to_tab(&mut self, tab: MainTab) {
+        let old_tab = self.active_tab;
+
+        if old_tab != tab {
+            // Set loading state for the new tab
+            self.main_tab_system.set_tab_loading(&tab, true);
+
+            // Perform the switch
+            self.main_tab_system.set_active_tab(&tab);
+
+            // Show transition notification
+            self.notifications.info(
+                format!("Switching to {}", tab.name()),
+                format!("Loading {} view...", tab.description()),
+            );
+
+            // Track tab switch for adaptive UI
+            self.adaptive_ui.track_feature_usage(&format!("tab_{:?}", tab));
+
+            // Clear loading state after a brief moment (simulating async load)
+            // In a real implementation, this would be done when the tab content is ready
+            self.main_tab_system.set_tab_loading(&tab, false);
+        }
+    }
+
+    /// Check if any tab has unsaved changes
+    fn has_unsaved_changes(&self) -> bool {
+        // Check the unsaved changes tracking system
+        if self.unsaved_changes.values().any(|&has_changes| has_changes) {
+            return true;
+        }
+
+        // Check if there are active file operations
+        if self.job_running {
+            return true;
+        }
+
+        // Check if there are unsaved storage configurations
+        if self.has_unsaved_storage_config() {
+            return true;
+        }
+
+        // Check if there are unsaved backup configurations
+        if let Some(backup_state) = &self.backup_state {
+            if self.has_unsaved_backup_config(backup_state) {
+                return true;
+            }
+        }
+
+        // Check if there are unsaved security/crypto configurations
+        if self.has_unsaved_crypto_config() {
+            return true;
+        }
+
+        false
+    }
+
+    /// Check for unsaved storage configurations
+    fn has_unsaved_storage_config(&self) -> bool {
+        // Check if current form values differ from saved values
+        // This is a simplified check - in a real implementation, you'd compare
+        // current form state with last saved state
+        false
+    }
+
+    /// Check for unsaved backup configurations
+    fn has_unsaved_backup_config(&self, _backup_state: &crate::gui::backup_widgets::BackupWidgetState) -> bool {
+        // Check backup configuration changes
+        false
+    }
+
+    /// Check for unsaved crypto configurations
+    fn has_unsaved_crypto_config(&self) -> bool {
+        // Check if key management or certificate operations are in progress
+        false
+    }
+
+    /// Mark a specific area as having unsaved changes
+    pub fn mark_unsaved_changes(&mut self, area: &str, has_changes: bool) {
+        self.unsaved_changes.insert(area.to_string(), has_changes);
+
+        // Update the appropriate tab badge
+        let tab_id = match area {
+            area if area.starts_with("storage_") => MainTab::Storage,
+            area if area.starts_with("backup_") => MainTab::Backup,
+            area if area.starts_with("crypto_") || area.starts_with("security_") => MainTab::Security,
+            area if area.starts_with("monitoring_") => MainTab::Monitoring,
+            _ => MainTab::Settings,
+        };
+
+        self.main_tab_system.set_tab_unsaved_changes(&tab_id, has_changes);
+    }
+
+    /// Check if a specific area has unsaved changes
+    pub fn has_unsaved_changes_in_area(&self, area: &str) -> bool {
+        self.unsaved_changes.get(area).copied().unwrap_or(false)
+    }
+
+    /// Clear unsaved changes for a specific area
+    pub fn clear_unsaved_changes(&mut self, area: &str) {
+        self.unsaved_changes.insert(area.to_string(), false);
+
+        // Update the appropriate tab badge
+        let tab_id = match area {
+            area if area.starts_with("storage_") => MainTab::Storage,
+            area if area.starts_with("backup_") => MainTab::Backup,
+            area if area.starts_with("crypto_") || area.starts_with("security_") => MainTab::Security,
+            area if area.starts_with("monitoring_") => MainTab::Monitoring,
+            _ => MainTab::Settings,
+        };
+
+        self.main_tab_system.set_tab_unsaved_changes(&tab_id, false);
+    }
+
+    /// Auto-save changes if enough time has passed
+    pub fn try_auto_save(&mut self) {
+        let elapsed = self.last_auto_save.elapsed();
+        if elapsed >= std::time::Duration::from_secs(30) { // Auto-save every 30 seconds
+            self.perform_auto_save();
+            self.last_auto_save = std::time::Instant::now();
+        }
+    }
+
+    /// Perform auto-save of current state
+    fn perform_auto_save(&mut self) {
+        // Save current settings
+        self.save_settings();
+
+        // Log auto-save action
+        log::info!("Auto-saved application state");
+
+        // Show subtle notification
+        self.notifications.info("Auto-save", "Application state has been saved");
+    }
+
+    /// Show dialog for unsaved changes
+    fn show_unsaved_changes_dialog(&mut self, target_tab: &MainTab) {
+        let current_tab_name = self.active_tab.name();
+
+        // Show a more detailed warning with actionable options
+        self.notifications.warning(
+            "Unsaved Changes Detected",
+            format!(
+                "You have unsaved changes in {}. Switching to {} will lose these changes.",
+                current_tab_name,
+                target_tab.name()
+            ),
+        );
+
+        // In a more sophisticated implementation, you would:
+        // 1. Show a modal dialog with Save/Discard/Cancel options
+        // 2. Implement a confirmation system
+        // 3. Allow users to review what changes will be lost
+
+        // For now, we prevent the tab switch and show the notification
+        log::warn!("Tab switch prevented due to unsaved changes in {}", current_tab_name);
+    }
+
+    /// Update tab states (badges, loading indicators, etc.)
+    fn update_tab_states(&mut self) {
+        // Update Storage tab badge based on active operations
+        if self.job_running {
+            self.main_tab_system.update_tab(&MainTab::Storage, |tab| {
+                tab.badge = Some("!".to_string());
+                tab.badge_color = Some(egui::Color32::from_rgb(255, 149, 0));
+            });
+        }
+
+        // Update Backup tab based on backup state
+        if let Some(_backup_state) = &self.backup_state {
+            self.main_tab_system.update_tab(&MainTab::Backup, |tab| {
+                tab.badge = Some("•".to_string());
+                tab.badge_color = Some(egui::Color32::from_rgb(52, 199, 89));
+            });
+        }
+
+        // Update Monitoring tab based on alerts
+        let alert_count = self.notifications.notification_count();
+        if alert_count > 0 {
+            self.main_tab_system.update_tab(&MainTab::Monitoring, |tab| {
+                tab.badge = Some(alert_count.to_string());
+                tab.badge_color = Some(egui::Color32::from_rgb(255, 59, 48));
+            });
+        }
+
+        // Update Settings tab for unsaved changes
+        if self.has_unsaved_changes() {
+            self.main_tab_system.update_tab(&MainTab::Settings, |tab| {
+                tab.has_unsaved_changes = true;
+            });
+        }
+    }
+
+    /// Render transition placeholder during tab switching
+    fn render_transition_placeholder(&mut self, ui: &mut egui::Ui) {
+        ui.vertical_centered(|ui| {
+            ui.add_space(100.0);
+
+            // Show loading spinner
+            ui.spinner();
+            ui.add_space(20.0);
+
+            // Show transition message
+            let progress = self.main_tab_system.transition_progress();
+            ui.label(format!("Loading... {:.0}%", progress * 100.0));
+
+            // Progress bar
+            ui.add(egui::ProgressBar::new(progress).desired_width(200.0));
         });
     }
 
@@ -594,7 +920,7 @@ impl AppState {
                 }
 
                 if ui.button("🔄 Sync Now").clicked() {
-                    self.log("Manual sync initiated");
+                    log::info!("Manual sync initiated");
                     self.notifications.info("Sync Started", "Manual synchronization initiated");
                 }
 
@@ -712,7 +1038,7 @@ impl AppState {
             ui.horizontal(|ui| {
                 if ui.button("🚀 Process Files").clicked() {
                     self.notifications.info("Processing", "File processing started");
-                    self.log("File processing initiated");
+                    log::info!("File processing initiated");
                 }
 
                 if ui.button("⏸️ Pause").clicked() {

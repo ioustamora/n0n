@@ -117,7 +117,7 @@ struct ServiceState {
 
 #[derive(Debug, Clone)]
 #[derive(Serialize, Deserialize)]
-struct ExportStatus {
+pub struct ExportStatus {
     last_export: Option<DateTime<Utc>>,
     last_error: Option<String>,
     export_count: u64,

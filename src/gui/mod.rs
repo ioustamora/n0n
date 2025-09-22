@@ -20,6 +20,7 @@ pub mod data_visualization;
 pub mod role_based_ui;
 pub mod intelligent_config;
 pub mod adaptive_ui;
+pub mod components;
 
 pub use state::AppState;
 
@@ -43,6 +44,7 @@ pub use data_visualization::{DataVisualization, SystemMetrics, StorageAnalytics}
 pub use role_based_ui::{RoleBasedUIManager, UserProfile, UserRole, ExpertiseLevel};
 pub use intelligent_config::IntelligentConfigManager;
 pub use adaptive_ui::AdaptiveUIManager;
+pub use components::{TabSystem, Tab, TransitionState, TabConfig};
 
 use eframe::egui;
 use std::path::PathBuf;

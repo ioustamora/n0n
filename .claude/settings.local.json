@@ -32,7 +32,13 @@
       "Bash(timeout 30 cargo build --lib)",
       "Bash(timeout 15 cargo build --lib)",
       "Bash(timeout 15 cargo build --lib --message-format=short)",
-      "Bash(cargo doc:*)"
+      "Bash(cargo doc:*)",
+      "Bash(timeout 15 cargo check --quiet)",
+      "Bash(timeout 20s cargo check --lib)",
+      "Bash(timeout 25s cargo check --lib --message-format=short)",
+      "Bash(timeout 20s cargo check --lib --message-format=short)",
+      "Bash(timeout 25s cargo check --lib)",
+      "Bash(timeout:*)"
     ],
     "deny": [],
     "ask": []

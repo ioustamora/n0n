@@ -242,6 +242,10 @@ impl NotificationManager {
         }
     }
 
+    pub fn notification_count(&self) -> usize {
+        self.notifications.len()
+    }
+
     pub fn render_notification_panel(&mut self, ui: &mut egui::Ui) {
         ui.heading("Notifications");
 

@@ -3,15 +3,16 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::access_control::{
-    AccessControlService, Role, Permission, RoleAssignment, 
+    AccessControlService, Role, Permission, RoleAssignment,
     AccessControlRequest, AccessContext, ServiceStatistics,
     ABACPolicy, Session, AuditEvent, AuditEventType, AuditResult
 };
+use crate::gui::components::{TabSystem, Tab, TabConfig};
 
 /// Widget for access control and permissions management
 pub struct AccessControlWidget {
     pub access_control_service: Option<Arc<AccessControlService>>,
-    pub selected_tab: AccessControlTab,
+    pub tab_system: TabSystem<AccessControlTab>,
     pub service_statistics: Option<ServiceStatistics>,
     
     // User management
@@ -75,9 +76,40 @@ impl Default for AccessControlWidget {
         use chrono::Utc;
         use uuid::Uuid;
         
+        // Initialize tab system
+        let tabs = vec![
+            Tab::new(AccessControlTab::Overview, "📊 Overview")
+                .with_tooltip("Access control system overview and statistics"),
+            Tab::new(AccessControlTab::Users, "👥 Users")
+                .with_tooltip("User management and role assignments"),
+            Tab::new(AccessControlTab::Roles, "🏷️ Roles")
+                .with_tooltip("Role definitions and hierarchies"),
+            Tab::new(AccessControlTab::Permissions, "🔑 Permissions")
+                .with_tooltip("Permission management and scoping"),
+            Tab::new(AccessControlTab::Policies, "📋 Policies")
+                .with_tooltip("Access control policies and rules"),
+            Tab::new(AccessControlTab::Sessions, "🔗 Sessions")
+                .with_tooltip("Active user sessions and session management"),
+            Tab::new(AccessControlTab::Audit, "📝 Audit")
+                .with_tooltip("Audit logs and access history"),
+            Tab::new(AccessControlTab::Testing, "🧪 Testing")
+                .with_tooltip("Test access permissions and policies"),
+        ];
+
+        let tab_config = TabConfig {
+            show_icons: true,
+            show_badges: true,
+            enable_animations: true,
+            tab_height: 32.0,
+            tab_spacing: 6.0,
+            transition_duration: std::time::Duration::from_millis(150),
+            keyboard_shortcuts: false, // Disable for sub-tabs
+        };
+
         Self {
             access_control_service: None,
-            selected_tab: AccessControlTab::Overview,
+            tab_system: TabSystem::new(tabs, tab_config)
+                .with_active_tab(&AccessControlTab::Overview),
             service_statistics: None,
             new_user_id: String::new(),
             selected_user_id: String::new(),
@@ -153,30 +185,58 @@ impl AccessControlWidget {
 
         ui.separator();
 
-        // Tabs
-        ui.horizontal(|ui| {
-            ui.selectable_value(&mut self.selected_tab, AccessControlTab::Overview, "📊 Overview");
-            ui.selectable_value(&mut self.selected_tab, AccessControlTab::Users, "👥 Users");
-            ui.selectable_value(&mut self.selected_tab, AccessControlTab::Roles, "🏷️ Roles");
-            ui.selectable_value(&mut self.selected_tab, AccessControlTab::Permissions, "🔑 Permissions");
-            ui.selectable_value(&mut self.selected_tab, AccessControlTab::Policies, "📋 Policies");
-            ui.selectable_value(&mut self.selected_tab, AccessControlTab::Sessions, "🔗 Sessions");
-            ui.selectable_value(&mut self.selected_tab, AccessControlTab::Audit, "📝 Audit");
-            ui.selectable_value(&mut self.selected_tab, AccessControlTab::Testing, "🧪 Testing");
-        });
+        // Enhanced tab system
+        if let Some(clicked_tab) = self.tab_system.render(ui) {
+            // Handle tab change with any necessary state management
+            self.on_tab_changed(&clicked_tab);
+        }
 
         ui.separator();
 
-        // Tab content
-        match self.selected_tab {
-            AccessControlTab::Overview => self.render_overview_tab(ui),
-            AccessControlTab::Users => self.render_users_tab(ui),
-            AccessControlTab::Roles => self.render_roles_tab(ui),
-            AccessControlTab::Permissions => self.render_permissions_tab(ui),
-            AccessControlTab::Policies => self.render_policies_tab(ui),
-            AccessControlTab::Sessions => self.render_sessions_tab(ui),
-            AccessControlTab::Audit => self.render_audit_tab(ui),
-            AccessControlTab::Testing => self.render_testing_tab(ui),
+        // Tab content with transition awareness
+        let current_tab = self.tab_system.active_tab_id()
+            .cloned()
+            .unwrap_or(AccessControlTab::Overview);
+
+        if !self.tab_system.is_transitioning() {
+            match current_tab {
+                AccessControlTab::Overview => self.render_overview_tab(ui),
+                AccessControlTab::Users => self.render_users_tab(ui),
+                AccessControlTab::Roles => self.render_roles_tab(ui),
+                AccessControlTab::Permissions => self.render_permissions_tab(ui),
+                AccessControlTab::Policies => self.render_policies_tab(ui),
+                AccessControlTab::Sessions => self.render_sessions_tab(ui),
+                AccessControlTab::Audit => self.render_audit_tab(ui),
+                AccessControlTab::Testing => self.render_testing_tab(ui),
+            }
+        } else {
+            // Show loading state during transitions
+            ui.vertical_centered(|ui| {
+                ui.add_space(50.0);
+                ui.spinner();
+                ui.label("Loading...");
+            });
+        }
+    }
+
+    fn on_tab_changed(&mut self, new_tab: &AccessControlTab) {
+        // Update any state-specific logic when switching tabs
+        match new_tab {
+            AccessControlTab::Audit => {
+                // Refresh audit events when switching to audit tab
+                self.refresh_audit_events();
+            }
+            AccessControlTab::Sessions => {
+                // Refresh active sessions
+                self.refresh_active_sessions();
+            }
+            AccessControlTab::Overview => {
+                // Refresh statistics
+                self.refresh_data();
+            }
+            _ => {
+                // No specific action for other tabs
+            }
         }
     }
 
@@ -207,27 +267,27 @@ impl AccessControlWidget {
                     ui.separator();
                     
                     if ui.button("👤 Create New User").clicked() {
-                        self.selected_tab = AccessControlTab::Users;
+                        self.tab_system.set_active_tab(&AccessControlTab::Users);
                     }
                     
                     if ui.button("🏷️ Manage Roles").clicked() {
-                        self.selected_tab = AccessControlTab::Roles;
+                        self.tab_system.set_active_tab(&AccessControlTab::Roles);
                     }
                     
                     if ui.button("🔑 Manage Permissions").clicked() {
-                        self.selected_tab = AccessControlTab::Permissions;
+                        self.tab_system.set_active_tab(&AccessControlTab::Permissions);
                     }
                     
                     if ui.button("🔗 View Active Sessions").clicked() {
-                        self.selected_tab = AccessControlTab::Sessions;
+                        self.tab_system.set_active_tab(&AccessControlTab::Sessions);
                     }
                     
                     if ui.button("📝 View Audit Log").clicked() {
-                        self.selected_tab = AccessControlTab::Audit;
+                        self.tab_system.set_active_tab(&AccessControlTab::Audit);
                     }
                     
                     if ui.button("🧪 Test Access").clicked() {
-                        self.selected_tab = AccessControlTab::Testing;
+                        self.tab_system.set_active_tab(&AccessControlTab::Testing);
                     }
                 });
             });
@@ -631,6 +691,24 @@ impl AccessControlWidget {
         if let Some(_service) = &self.access_control_service {
             // TODO: Refresh data from access control service
             log::info!("Refreshing access control data...");
+        }
+    }
+
+    fn refresh_audit_events(&mut self) {
+        if let Some(_service) = &self.access_control_service {
+            // TODO: Refresh audit events from service
+            log::info!("Refreshing audit events...");
+            // For now, just clear and mock some data
+            self.audit_events.clear();
+        }
+    }
+
+    fn refresh_active_sessions(&mut self) {
+        if let Some(_service) = &self.access_control_service {
+            // TODO: Refresh active sessions from service
+            log::info!("Refreshing active sessions...");
+            // For now, just clear and mock some data
+            self.active_sessions.clear();
         }
     }
 

@@ -303,29 +303,30 @@ impl AuditLogger {
     }
 }
 
+use std::sync::Mutex;
+
 /// Global audit logger instance
-static mut AUDIT_LOGGER: Option<AuditLogger> = None;
-static AUDIT_INIT: std::sync::Once = std::sync::Once::new();
+static AUDIT_LOGGER: Mutex<Option<AuditLogger>> = Mutex::new(None);
 
 /// Initialize the global audit logger
 pub fn init_audit_logger(file_path: PathBuf, enabled: bool) {
-    AUDIT_INIT.call_once(|| {
-        unsafe {
-            AUDIT_LOGGER = Some(AuditLogger::new(file_path, enabled));
-        }
-    });
+    let mut logger = AUDIT_LOGGER.lock().unwrap();
+    *logger = Some(AuditLogger::new(file_path, enabled));
 }
 
 /// Get the global audit logger
-pub fn get_audit_logger() -> Option<&'static AuditLogger> {
-    unsafe { AUDIT_LOGGER.as_ref() }
+pub fn with_audit_logger<F, R>(f: F) -> Option<R>
+where
+    F: FnOnce(&AuditLogger) -> R,
+{
+    AUDIT_LOGGER.lock().unwrap().as_ref().map(f)
 }
 
 /// Convenience macros for audit logging
 #[macro_export]
 macro_rules! audit_log {
     ($event_type:expr, $actor:expr, $result:expr, $details:expr) => {
-        if let Some(logger) = $crate::logging::audit::get_audit_logger() {
+        $crate::logging::audit::with_audit_logger(|logger| {
             let entry = $crate::logging::audit::AuditEntry {
                 timestamp: chrono::Utc::now(),
                 event_type: $event_type,
@@ -343,14 +344,14 @@ macro_rules! audit_log {
                     tracing::error!("Failed to write audit log: {}", e);
                 }
             });
-        }
+        });
     };
 }
 
 #[macro_export]
 macro_rules! audit_crypto {
     ($event_type:expr, $actor:expr, $key_id:expr, $result:expr) => {
-        if let Some(logger) = $crate::logging::audit::get_audit_logger() {
+        $crate::logging::audit::with_audit_logger(|logger| {
             tokio::spawn(async move {
                 if let Err(e) = logger.log_crypto_operation(
                     $event_type,
@@ -363,14 +364,14 @@ macro_rules! audit_crypto {
                     tracing::error!("Failed to write crypto audit log: {}", e);
                 }
             });
-        }
+        });
     };
 }
 
 #[macro_export]
 macro_rules! audit_file {
     ($event_type:expr, $actor:expr, $target:expr, $result:expr) => {
-        if let Some(logger) = $crate::logging::audit::get_audit_logger() {
+        $crate::logging::audit::with_audit_logger(|logger| {
             tokio::spawn(async move {
                 if let Err(e) = logger.log_file_operation(
                     $event_type,
@@ -384,14 +385,14 @@ macro_rules! audit_file {
                     tracing::error!("Failed to write file audit log: {}", e);
                 }
             });
-        }
+        });
     };
 }
 
 #[macro_export]
 macro_rules! audit_security {
     ($event_type:expr, $actor:expr, $severity:expr, $details:expr) => {
-        if let Some(logger) = $crate::logging::audit::get_audit_logger() {
+        $crate::logging::audit::with_audit_logger(|logger| {
             tokio::spawn(async move {
                 if let Err(e) = logger.log_security_event(
                     $event_type,
@@ -404,7 +405,7 @@ macro_rules! audit_security {
                     tracing::error!("Failed to write security audit log: {}", e);
                 }
             });
-        }
+        });
     };
 }
 

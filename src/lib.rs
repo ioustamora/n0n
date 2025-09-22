@@ -58,8 +58,21 @@ pub mod logging;
 pub mod security;
 
 // Re-export common types if needed
-pub use model::*;
-pub use utils::*;
-pub use chunk::*;
-pub use crypto::*;
-pub use storage::*;
+pub use model::{
+    ChunkMeta, ProcessingOptions, FileEncryptionConfig, SftpConfig, SftpEncryptionConfig,
+    SftpUploadConfig, StorageBackend as StorageBackendModel,
+};
+pub use utils::{
+    compute_sha256, encode_base64, decode_base64, get_file_size, read_file_to_bytes,
+    write_bytes_to_file, create_dir_if_not_exists, parse_key_hex_or_b64, estimate_chunks,
+};
+pub use chunk::{
+    split_file_into_chunks, deduplicate_chunks, assemble_file_from_chunks,
+    verify_file_integrity,
+};
+pub use crypto::CryptoService;
+pub use storage::{
+    StorageBackend, StorageType, StorageConfig, ChunkMetadata, StorageError, StorageFactory,
+    StorageManager, LocalBackend, SftpBackend, S3Backend, BackupManager, BackupStrategy,
+    BackupSchedule, BackupRecord, BackupFrequency,
+};
